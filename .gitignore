@@ -1,0 +1,6 @@
+.build/
+build/
+dist/
+Vendor/downloads/
+*.dmg
+.DS_Store

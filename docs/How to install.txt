@@ -1,0 +1,62 @@
+FACEID
+======
+
+INSTALLATION
+1. Drag the FaceID icon onto the Applications folder next to it.
+2. Open the Applications folder in Finder and launch FaceID.
+
+IF macOS WON'T OPEN THE APP
+The app is not notarized by Apple, so on first launch macOS may show a
+warning ("cannot verify the developer" or "Apple cannot check it for
+malicious software"). You need to allow it once.
+
+  • On macOS 15 and later, close the warning with "Done", open System
+    Settings → Privacy & Security, scroll down, click "Open Anyway" next
+    to FaceID and confirm.
+
+  • On macOS 14, right-click FaceID in Finder, choose "Open" and click
+    "Open" again in the warning.
+
+  • If that doesn't help, open Terminal and run:
+        xattr -dr com.apple.quarantine /Applications/FaceID.app
+
+SETUP
+FaceID lives in the notch, like Face ID in the iPhone's Dynamic Island.
+On a Mac without a notch it slides down from the top of the screen.
+1. Click "Set Up FaceID", confirm with Touch ID or your password and
+   allow camera access.
+2. Move your head slowly in a circle until every tick around your face
+   turns green. Click "Continue" and do the circle once more. Your face
+   is saved by itself.
+3. Enter your Mac password. FaceID keeps it in your keychain and types it
+   on the lock screen when it recognizes you.
+4. Click "Allow" and turn on FaceID in System Settings → Accessibility.
+A green checkmark in the notch means you're done.
+
+HOW TO USE
+  • Unlocking. When the Mac is locked, touch the keyboard or trackpad or
+    open the lid and look at the screen. The Mac unlocks and a green
+    checkmark flashes in the notch.
+  • The controls open with a click on the notch or on the FaceID icon in
+    the menu bar. A green switch is on. Point at a switch to see what
+    it does.
+  • sudo. Turn on "sudo in Terminal" in the controls (macOS asks for an
+    administrator password). When you type sudo in Terminal, FaceID
+    recognizes your face and waits for "Allow" or Return. "Password"
+    goes back to typing the password.
+  • Auto-Lock. When you're not in front of the camera, the Mac locks.
+    Five seconds before, a countdown appears in the notch; moving the
+    mouse cancels it.
+  • Faces. Click "Faces" in the controls to add a second look (glasses,
+    a beard) or another person, rename a face (click its name), record it
+    again or delete it.
+
+LIMITATIONS
+The Mac's camera is an ordinary one, without the infrared light and depth
+sensor of the iPhone. FaceID checks that it sees a live face, but a good
+photo or video could in theory fool it. Keep a strong password for
+important data. After a restart, enter the password yourself.
+
+REQUIREMENTS
+macOS 14 or later and a Mac with a built-in camera. FaceID is fastest on
+Macs with Apple Silicon.
