@@ -93,9 +93,13 @@ enum PamInstaller {
         return SecStaticCodeCheckValidity(staticCode, flags, nil) == errSecSuccess
     }
 
-    /// FaceID has Full Disk Access: the privacy database is readable only with it.
+    /// FaceID has Full Disk Access: the privacy database opens only with it. A permission check such as
+    /// `isReadableFile` says yes either way: the file is readable by everyone and macOS refuses only the open.
     static var hasDiskAccess: Bool {
-        FileManager.default.isReadableFile(atPath: "/Library/Application Support/com.apple.TCC/TCC.db")
+        let file = open("/Library/Application Support/com.apple.TCC/TCC.db", O_RDONLY)
+        guard file >= 0 else { return false }
+        close(file)
+        return true
     }
 
     static func sha256(_ url: URL) -> String? {
@@ -132,6 +136,9 @@ enum PamInstaller {
             case -128: throw Failure.cancelled
             case 3: throw Failure.script(L("В папки /usr/local может писать не только root, поэтому ставить туда модуль sudo небезопасно"))
             case 4: throw Failure.diskAccess
+            case 5:
+                Log.write("sudo module rejected: \((error[NSAppleScript.errorMessage] as? String) ?? "")")
+                throw Failure.script(L("sudo не принял модуль FaceID, настройки sudo остались прежними"))
             default: throw Failure.script((error[NSAppleScript.errorMessage] as? String) ?? L("Не удалось изменить настройки sudo"))
             }
         }
@@ -147,7 +154,8 @@ enum PamInstaller {
     }
 
     /// Runs as root. Order matters: install puts the module in place before sudo_local mentions it, uninstall
-    /// removes the line first: a sudo_local line pointing at a missing module breaks sudo.
+    /// removes the line first: a sudo_local line pointing at a module sudo cannot load may break sudo. For the same
+    /// reason install ends by starting sudo and takes the line out again if sudo fails.
     static let script = #"""
     set -eu
     MODULE=/usr/local/lib/pam/pam_faceid.so
@@ -167,6 +175,14 @@ enum PamInstaller {
         rm -f "$1"
         chown root:wheel "$LOCAL"
         chmod 444 "$LOCAL"
+    }
+
+    remove_line() {
+        if [ -f "$LOCAL" ] && grep -qF "$MODULE" "$LOCAL"; then
+            NEW="$(mktemp /tmp/faceid-sudo_local.XXXXXX)"
+            grep -vF "$MODULE" "$LOCAL" > "$NEW" || true
+            write_local "$NEW"
+        fi
     }
 
     case "$1" in
@@ -214,13 +230,16 @@ enum PamInstaller {
             rm -f "$CURRENT"
             write_local "$NEW"
         fi
+        # sudo reads its PAM settings and loads every module in them on each start, root's included (root is
+        # never asked for a password). If it fails now, the line goes and sudo works as before. Exit 5.
+        if ! OUTPUT="$(/usr/bin/sudo -n /usr/bin/true 2>&1)"; then
+            remove_line
+            echo "sudo fails with pam_faceid.so: $OUTPUT" >&2
+            exit 5
+        fi
         ;;
     uninstall)
-        if [ -f "$LOCAL" ] && grep -qF "$MODULE" "$LOCAL"; then
-            NEW="$(mktemp /tmp/faceid-sudo_local.XXXXXX)"
-            grep -vF "$MODULE" "$LOCAL" > "$NEW" || true
-            write_local "$NEW"
-        fi
+        remove_line
         rm -f "$MODULE" "$CONFIG" /usr/local/etc/faceid/sudo_local.backup
         rmdir /usr/local/etc/faceid 2>/dev/null || true
         ;;

@@ -16,10 +16,12 @@ trap 'kill $APP_PID 2>/dev/null || true; rm -rf "$TMP"' EXIT
 swift build --product FaceID 2>&1 | grep -E "error|Build complete" || true
 APP_BIN="$ROOT/.build/debug/FaceID"
 # The development build listens in "FaceID Debug", away from the installed app.
-xcrun clang -dynamiclib -O2 -Wall -Wextra -DFACEID_TEST_CONFIG="\"$TMP/pam.conf\"" \
+# On Apple Silicon both are arm64e, as sudo is: the harness then loads the module by the same rules as sudo.
+ARCH=$([ "$(uname -m)" = arm64 ] && echo arm64e || echo x86_64)
+xcrun clang -arch "$ARCH" -dynamiclib -O2 -Wall -Wextra -DFACEID_TEST_CONFIG="\"$TMP/pam.conf\"" \
     -DFACEID_TEST_SOCKET="\"Library/Application Support/FaceID Debug/sudo.sock\"" -o "$TMP/pam_faceid_test.so" \
     PAM/pam_faceid.c -lpam -framework Security -framework CoreFoundation
-xcrun clang -O2 -Wall -o "$TMP/pam_harness" scripts/test/pam_harness.c -lpam
+xcrun clang -arch "$ARCH" -O2 -Wall -o "$TMP/pam_harness" scripts/test/pam_harness.c -lpam
 
 # The module trusts exactly this build of FaceID. IMPOSTOR=1 makes it expect another app: the module must then
 # refuse to talk to the socket (PAM_IGNORE), as it would with a program posing as FaceID.

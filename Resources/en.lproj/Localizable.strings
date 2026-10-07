@@ -88,6 +88,7 @@
 "FaceID хочет подключить распознавание лица к sudo" = "FaceID wants to use face recognition for sudo";
 "FaceID хочет отключить распознавание лица в sudo" = "FaceID wants to stop using face recognition for sudo";
 "В папки /usr/local может писать не только root, поэтому ставить туда модуль sudo небезопасно" = "Users other than root can write to /usr/local, so it isn't safe to put the sudo module there";
+"sudo не принял модуль FaceID, настройки sudo остались прежними" = "sudo didn't accept the FaceID module, so its settings stay as they were";
 "Не удалось изменить настройки sudo" = "Couldn't change the sudo settings";
 "FaceID: лицо не настроено" = "FaceID: no face is set up";
 "FaceID: нет доступа к камере" = "FaceID: no camera access";

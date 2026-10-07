@@ -24,7 +24,11 @@ install() {  # only "install -d -o … -g … -m … <dirs>" is used
         case "$1" in -d) shift ;; -o|-g|-m) shift 2 ;; *) mkdir -p "$1"; shift ;; esac
     done
 }
+sudo_check() {  # stands in for the real sudo started at the end of install
+    [ "${SUDO_FAILS:-0}" = 0 ] || { echo "sudo: unable to initialize PAM: test" >&2; return 1; }
+}
 """
+SUDO_CHECK = "/usr/bin/sudo -n /usr/bin/true"
 
 TEMPLATE = """# sudo_local: local config file which survives system update and is included for sudo
 # uncomment following line to enable Touch ID for sudo
@@ -35,14 +39,18 @@ LINE = "auth       sufficient     {root}/lib/pam/pam_faceid.so"
 
 OWNER_CHECK = re.compile(r"\n *for dir in /usr .*?\n *done\n", re.S)
 assert OWNER_CHECK.search(script), "the folder ownership check is missing"
+assert SUDO_CHECK in script, "the sudo check at the end of install is missing"
 
 
-def run(root, *args, owner_check=False):
+def run(root, *args, owner_check=False, sudo_fails=False, stubs=""):
     body = script if owner_check else OWNER_CHECK.sub("\n", script)
     body = (body.replace("/usr/local/lib/pam", f"{root}/lib/pam")
                 .replace("/usr/local/etc/faceid", f"{root}/etc/faceid")
-                .replace("/etc/pam.d", f"{root}/pam.d"))
-    return subprocess.run(["/bin/sh", "-c", STUBS + body, "faceid-sudo-setup", *args], capture_output=True, text=True)
+                .replace("/etc/pam.d", f"{root}/pam.d")
+                .replace(SUDO_CHECK, "sudo_check"))
+    env = dict(os.environ, SUDO_FAILS="1" if sudo_fails else "0")
+    return subprocess.run(["/bin/sh", "-c", STUBS + stubs + body, "faceid-sudo-setup", *args],
+                          capture_output=True, text=True, env=env)
 
 
 def check(condition, message):
@@ -111,5 +119,13 @@ with tempfile.TemporaryDirectory() as root:
     result = run(root, "install", module, "0" * 64, requirement)
     check(result.returncode == 2 and not os.path.exists(f"{root}/lib/pam/pam_faceid.so"), "a wrong checksum stops the install")
     check("pam_faceid.so" not in open(local).read(), "sudo_local is untouched after a failed install")
+
+    # sudo that no longer starts with the module in its settings: the line goes again and the user's lines stay.
+    # chmod is a no-op here: only root can rewrite the read-only file twice in one run.
+    os.chmod(local, 0o644)
+    result = run(root, "install", module, digest, requirement, sudo_fails=True, stubs="chmod() { :; }\n")
+    check(result.returncode == 5 and "unable to initialize PAM" in result.stderr, "sudo failing after the install is exit 5")
+    check(open(local).read() == "auth       optional       /opt/homebrew/lib/pam/pam_reattach.so\nauth       sufficient     pam_tid.so\n",
+          "the line is taken out again and the user's lines stay")
 
 print("all good")

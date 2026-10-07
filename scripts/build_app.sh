@@ -41,8 +41,13 @@ BIN="$ROOT/.build/out/Products/Release/$APP_NAME"
 
 echo "==> pam_faceid.so"
 mkdir -p "$ROOT/build"
-xcrun clang -arch arm64 -arch x86_64 -mmacosx-version-min=14.0 -dynamiclib -O2 -Wall -Wextra -Werror \
+# sudo on Apple Silicon is arm64e and refuses a module without an arm64e slice ("missing compatible architecture
+# (have 'arm64', need 'arm64e')"), so the module is built like Apple's own /usr/lib/pam modules: arm64e + x86_64.
+xcrun clang -arch arm64e -arch x86_64 -mmacosx-version-min=14.0 -dynamiclib -O2 -Wall -Wextra -Werror \
     -o "$ROOT/build/pam_faceid.so" PAM/pam_faceid.c -lpam -framework Security -framework CoreFoundation
+for arch in arm64e x86_64; do
+    lipo "$ROOT/build/pam_faceid.so" -verify_arch "$arch" || { echo "pam_faceid.so: no $arch"; exit 1; }
+done
 
 # 3. Bundle
 echo "==> assembling $APP"
