@@ -41,12 +41,15 @@ HOW TO USE
     the menu bar. A green switch is on. Point at a switch to see what
     it does.
   • sudo. Turn on "sudo in Terminal" in the controls (macOS asks for an
-    administrator password). When you type sudo in Terminal, FaceID
-    recognizes your face and waits for "Allow" or Return. "Password"
-    goes back to typing the password.
-  • Auto-Lock. When you're not in front of the camera, the Mac locks.
-    Five seconds before, a countdown appears in the notch; moving the
-    mouse cancels it.
+    administrator password). If FaceID asks for Full Disk Access, turn
+    on FaceID in System Settings → Privacy & Security → Full Disk
+    Access. When you type sudo in Terminal, FaceID recognizes your face
+    and waits for "Allow" or Return. "Password" goes back to typing the
+    password.
+  • Auto-Lock. Turn it on in the controls and the Mac locks by itself
+    when you're not in front of the camera. Choose how soon, from 15
+    seconds to 5 minutes, under "More". Five seconds before, a countdown
+    appears in the notch; moving the mouse cancels it.
   • Faces. Click "Faces" in the controls to add a second look (glasses,
     a beard) or another person, rename a face (click its name), record it
     again or delete it.
