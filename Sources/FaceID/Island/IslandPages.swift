@@ -54,22 +54,21 @@ enum AccessWatcher {
 
 // MARK: - Home
 
-/// The controls, laid out like Control Center on the Mac: switches as pills with an icon and a one-line name
-/// (unlocking across the whole width, the other four two by two), and three buttons. Pointing at a switch tells
-/// what it does. Before setup there is only the setup button.
+/// The controls, laid out like Control Center on the Mac: four switches as pills with an icon and a one-line name,
+/// two by two, and three buttons. Pointing at a switch tells what it does. Before setup there is only the setup
+/// button.
 struct HomePage: View {
     @ObservedObject private var model = AppModel.shared
     @ObservedObject private var settings = AppSettings.shared
-    @State private var busy = false
 
     enum Control {
-        case unlock, sudo, autoLock, attention, blink
+        case unlock, autoLock, attention, blink
     }
 
     var body: some View {
         if model.isEnrolled {
             VStack(spacing: 8) {
-                VStack(spacing: 6) {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
                     Tile(symbol: "lock.open.fill", title: L("Разблокировка"), on: settings.unlockEnabled && model.canUnlock,
                          attention: !model.canUnlock || model.passwordProblem, control: .unlock) {
                         if !model.canUnlock || model.passwordProblem {
@@ -79,22 +78,17 @@ struct HomePage: View {
                             settings.unlockEnabled.toggle()
                         }
                     }
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
-                        Tile(symbol: "terminal.fill", title: L("sudo в Терминале"), on: model.sudoState == .installed,
-                             attention: model.sudoState == .needsUpdate, control: .sudo) { toggleSudo() }
-                            .disabled(model.sudoState == .unsupported || busy)
-                        Tile(symbol: "figure.walk.departure", title: L("Автоблокировка"), on: settings.autoLockEnabled,
-                             control: .autoLock) {
-                            settings.autoLockEnabled.toggle()
-                        }
-                        Tile(symbol: "eye.fill", title: L("Внимание"), on: settings.requireAttention,
-                             control: .attention) {
-                            weaken(settings.requireAttention) { settings.requireAttention.toggle() }
-                        }
-                        Tile(symbol: "eye.slash.fill", title: L("Моргание"), on: settings.requireBlink,
-                             control: .blink) {
-                            weaken(settings.requireBlink) { settings.requireBlink.toggle() }
-                        }
+                    Tile(symbol: "figure.walk.departure", title: L("Автоблокировка"), on: settings.autoLockEnabled,
+                         control: .autoLock) {
+                        settings.autoLockEnabled.toggle()
+                    }
+                    Tile(symbol: "eye.fill", title: L("Внимание"), on: settings.requireAttention,
+                         control: .attention) {
+                        weaken(settings.requireAttention) { settings.requireAttention.toggle() }
+                    }
+                    Tile(symbol: "eye.slash.fill", title: L("Моргание"), on: settings.requireBlink,
+                         control: .blink) {
+                        weaken(settings.requireBlink) { settings.requireBlink.toggle() }
                     }
                 }
                 if let message = model.message {
@@ -137,9 +131,6 @@ struct HomePage: View {
             if model.passwordProblem { return L("Пароль от Mac не подошел. Нажмите, чтобы ввести новый") }
             if !model.canUnlock { return L("Для разблокировки не хватает пароля от Mac или разрешения. Нажмите, чтобы закончить настройку") }
             return L("Mac разблокируется, когда вы на него смотрите")
-        case .sudo:
-            if model.sudoState == .needsUpdate { return L("Нажмите, чтобы обновить модуль sudo") }
-            return L("sudo в Терминале сначала проверяет лицо и спрашивает пароль, только если не узнал вас")
         case .autoLock:
             return L("Mac блокируется сам, когда вы от него отходите")
         case .attention:
@@ -153,23 +144,6 @@ struct HomePage: View {
     private func weaken(_ on: Bool, _ change: @escaping () -> Void) {
         guard on else { return change() }
         Task { if await model.confirmOwner() { change() } }
-    }
-
-    private func toggleSudo() {
-        busy = true
-        defer {
-            busy = false
-            model.refresh()
-        }
-        do {
-            if model.sudoState == .installed { try PamInstaller.uninstall() } else { try PamInstaller.install() }
-        } catch PamInstaller.Failure.cancelled {
-        } catch PamInstaller.Failure.diskAccess {
-            Island.shared.show(.diskAccess)
-            DiskAccessWatcher.start()
-        } catch {
-            model.show(error.localizedDescription)
-        }
     }
 }
 
@@ -658,64 +632,6 @@ struct AccessPage: View {
             }
         }
         .padding(.top, 12)
-    }
-}
-
-// MARK: - Full Disk Access
-
-/// macOS lets a program change /etc/pam.d (where sudo is told about FaceID) only with Full Disk Access.
-struct DiskAccessPage: View {
-    var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "externaldrive.fill.badge.checkmark")
-                .font(.system(size: 24))
-                .foregroundStyle(.white)
-            Text(L("Для sudo нужен «Полный доступ к диску»"))
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.white)
-            HStack(spacing: 8) {
-                Button(L("Позже")) { Island.shared.hide() }
-                    .appButton(.secondary)
-                Button(L("Открыть настройки")) { AppModel.shared.openPrivacySettings("Privacy_AllFiles") }
-                    .appButton(.primary)
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(.top, 12)
-    }
-}
-
-/// Waits for Full Disk Access to be given in System Settings, then connects sudo again.
-@MainActor
-enum DiskAccessWatcher {
-    private static var timer: Timer?
-
-    static func start() {
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { _ in
-            MainActor.assumeIsolated {
-                guard case .diskAccess = Island.shared.content else {
-                    timer?.invalidate()
-                    timer = nil
-                    return
-                }
-                guard PamInstaller.hasDiskAccess else { return }
-                timer?.invalidate()
-                timer = nil
-                NSApp.activate(ignoringOtherApps: true)
-                do {
-                    try PamInstaller.install()
-                    Haptics.success()
-                    Island.shared.show(.home)
-                } catch PamInstaller.Failure.cancelled {
-                    Island.shared.show(.home)
-                } catch {
-                    AppModel.shared.show(error.localizedDescription)
-                    Island.shared.show(.home)
-                }
-                AppModel.shared.refresh()
-            }
-        }
     }
 }
 

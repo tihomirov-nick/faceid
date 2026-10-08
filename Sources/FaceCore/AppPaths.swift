@@ -6,8 +6,8 @@ public enum AppPaths {
     public static let appName = "FaceID"
     public static let bundleID = "com.faceid.app"
 
-    /// Development builds keep their own keychain items, socket and log: running one never touches the faces,
-    /// the password or the sudo socket of the installed app.
+    /// Development builds keep their own keychain items and log: running one never touches the faces or the
+    /// password of the installed app.
     #if DEBUG
     public static let storageName = "FaceID Debug"
     public static let keychainPrefix = "\(bundleID).debug"
@@ -15,16 +15,6 @@ public enum AppPaths {
     public static let storageName = appName
     public static let keychainPrefix = bundleID
     #endif
-
-    /// ~/Library/Application Support/FaceID (things that are not secret: the sudo socket).
-    /// `FACEID_SUPPORT_DIR` points to another folder (for tests).
-    public static var supportDir: URL {
-        if let custom = ProcessInfo.processInfo.environment["FACEID_SUPPORT_DIR"], !custom.isEmpty {
-            return ensureDir(URL(fileURLWithPath: custom, isDirectory: true))
-        }
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return ensureDir(base.appendingPathComponent(storageName, isDirectory: true))
-    }
 
     /// Compiled Core ML models made from `Resources/*.mlpackage` in development builds.
     static var modelCacheDir: URL {

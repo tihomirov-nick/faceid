@@ -72,7 +72,7 @@ final class AppSettings: ObservableObject {
         lockScreenBadge = defaults.bool(forKey: Key.badge)
     }
 
-    /// Recognition rules for unlocking and sudo.
+    /// Recognition rules for unlocking.
     var policy: ScanPolicy {
         ScanPolicy(threshold: strictness.threshold, requiredMatches: strictness == .strict ? 3 : 2,
                    requireAttention: requireAttention, requireBlink: requireBlink)

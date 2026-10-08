@@ -2,27 +2,6 @@ import CoreGraphics
 import XCTest
 @testable import FaceCore
 
-final class SudoProtocolTests: XCTestCase {
-    func testRoundTripKeepsAwkwardValues() {
-        let text = SudoProtocol.encode([("user", "nick"), ("command", "sudo echo 'a=b' \\ c\nd"), ("tty", "")])
-        let request = SudoProtocol.parse(text)
-        XCTAssertEqual(request?.user, "nick")
-        XCTAssertEqual(request?.command, "sudo echo 'a=b' \\ c\nd")
-        XCTAssertEqual(request?.tty, "")
-    }
-
-    func testRejectsIncompleteAndForeignInput() {
-        XCTAssertNil(SudoProtocol.parse("FACEID 1\nuser=nick\n"), "no empty line yet: the request is not complete")
-        XCTAssertNil(SudoProtocol.parse("HELLO\nuser=nick\n\n"))
-        XCTAssertNil(SudoProtocol.parse("FACEID 1\nnot a field\n\n"))
-    }
-
-    func testAnswersAreSingleLines() {
-        XCTAssertEqual(SudoProtocol.deny("two\nlines"), "DENY two lines\n")
-        XCTAssertEqual(SudoProtocol.info("look"), "INFO look\n")
-    }
-}
-
 final class BlinkTrackerTests: XCTestCase {
     func testQuickCloseAndOpenIsABlink() {
         var blink = BlinkTracker()

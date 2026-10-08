@@ -15,10 +15,10 @@ BUILD_NUMBER="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
 APP="$ROOT/build/$APP_NAME.app"
 MODELS=(SFace)
 
-# Signing. macOS remembers the camera and Accessibility permissions, the keychain items and the sudo module's trust
-# by the app's signature. An ad-hoc signature changes with every build, so each rebuild would need the permissions
-# granted again; a certificate keeps them. By default the first "Developer ID Application" or "Apple Development"
-# certificate in the keychain is used, otherwise ad-hoc. SIGN_IDENTITY="-" forces ad-hoc.
+# Signing. macOS remembers the camera and Accessibility permissions and the keychain items by the app's signature.
+# An ad-hoc signature changes with every build, so each rebuild would need the permissions granted again;
+# a certificate keeps them. By default the first "Developer ID Application" or "Apple Development" certificate in
+# the keychain is used, otherwise ad-hoc. SIGN_IDENTITY="-" forces ad-hoc.
 if [ -z "${SIGN_IDENTITY:-}" ]; then
     SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
         | awk -F'"' '/Developer ID Application/ {print $2; exit}')
@@ -32,22 +32,12 @@ for model in "${MODELS[@]}"; do
     [ -d "Resources/$model.mlpackage" ] || { ./scripts/fetch_models.sh; break; }
 done
 
-# 2. Compile (universal binary) and the sudo module
+# 2. Compile (universal binary)
 echo "==> swift build (arm64 + x86_64)"
 swift build -c release --arch arm64 --arch x86_64 --product "$APP_NAME" 2>&1 | grep -E "error|warning: unre|Build complete" || true
 BIN="$ROOT/.build/out/Products/Release/$APP_NAME"
 [ -x "$BIN" ] || BIN="$ROOT/.build/apple/Products/Release/$APP_NAME"
 [ -x "$BIN" ] || { echo "build failed"; exit 1; }
-
-echo "==> pam_faceid.so"
-mkdir -p "$ROOT/build"
-# sudo on Apple Silicon is arm64e and refuses a module without an arm64e slice ("missing compatible architecture
-# (have 'arm64', need 'arm64e')"), so the module is built like Apple's own /usr/lib/pam modules: arm64e + x86_64.
-xcrun clang -arch arm64e -arch x86_64 -mmacosx-version-min=14.0 -dynamiclib -O2 -Wall -Wextra -Werror \
-    -o "$ROOT/build/pam_faceid.so" PAM/pam_faceid.c -lpam -framework Security -framework CoreFoundation
-for arch in arm64e x86_64; do
-    lipo "$ROOT/build/pam_faceid.so" -verify_arch "$arch" || { echo "pam_faceid.so: no $arch"; exit 1; }
-done
 
 # 3. Bundle
 echo "==> assembling $APP"
@@ -59,7 +49,6 @@ for model in "${MODELS[@]}"; do
     xcrun coremlcompiler compile "Resources/$model.mlpackage" "$APP/Contents/Resources" >/dev/null
     [ -d "$APP/Contents/Resources/$model.mlmodelc" ] || { echo "$model: compilation failed"; exit 1; }
 done
-cp "$ROOT/build/pam_faceid.so" "$APP/Contents/Resources/"
 cp Resources/LICENSE-sface.txt "$APP/Contents/Resources/"
 
 # Icon: Liquid Glass icon made in the Icon Composer format (Resources/AppIcon.icon). actool turns it into
@@ -76,13 +65,13 @@ cp Resources/en.lproj/Localizable.strings "$APP/Contents/Resources/en.lproj/"
 cat > "$APP/Contents/Resources/en.lproj/InfoPlist.strings" <<STRINGS
 CFBundleDisplayName = "$APP_NAME";
 CFBundleName = "$APP_NAME";
-NSCameraUsageDescription = "FaceID recognizes your face with the camera to unlock the Mac and confirm sudo. Images never leave the Mac and are not saved";
+NSCameraUsageDescription = "FaceID recognizes your face with the camera to unlock the Mac and lock it when you leave. Images never leave the Mac and are not saved";
 NSHumanReadableCopyright = "FaceID — unlock your Mac with your face. Recognition: SFace (OpenCV Zoo, Apache 2.0)";
 STRINGS
 cat > "$APP/Contents/Resources/ru.lproj/InfoPlist.strings" <<STRINGS
 CFBundleDisplayName = "$APP_NAME";
 CFBundleName = "$APP_NAME";
-NSCameraUsageDescription = "FaceID узнает ваше лицо камерой, чтобы разблокировать Mac и подтверждать sudo. Изображения не покидают Mac и не сохраняются";
+NSCameraUsageDescription = "FaceID узнает ваше лицо камерой, чтобы разблокировать Mac и блокировать его, когда вы уходите. Изображения не покидают Mac и не сохраняются";
 NSHumanReadableCopyright = "FaceID — разблокировка Mac лицом. Распознавание: SFace (OpenCV Zoo, Apache 2.0)";
 STRINGS
 
@@ -108,7 +97,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
-    <key>NSCameraUsageDescription</key><string>FaceID recognizes your face with the camera to unlock the Mac and confirm sudo. Images never leave the Mac and are not saved</string>
+    <key>NSCameraUsageDescription</key><string>FaceID recognizes your face with the camera to unlock the Mac and lock it when you leave. Images never leave the Mac and are not saved</string>
     <key>NSCameraReactionEffectGesturesEnabledDefault</key><false/>
     <key>NSHumanReadableCopyright</key><string>FaceID — unlock your Mac with your face. Recognition: SFace (OpenCV Zoo, Apache 2.0)</string>
 </dict>
@@ -117,8 +106,7 @@ PLIST
 printf "APPL????" > "$APP/Contents/PkgInfo"
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
-# 4. Sign (inner code first). The hardened runtime keeps other programs from injecting code into FaceID, which
-# holds the login password and answers sudo.
+# 4. Sign. The hardened runtime keeps other programs from injecting code into FaceID, which holds the login password.
 echo "==> codesign ($SIGN_IDENTITY)"
 xattr -cr "$APP"
 if [ "$SIGN_IDENTITY" = "-" ]; then
@@ -126,7 +114,6 @@ if [ "$SIGN_IDENTITY" = "-" ]; then
 else
     TIMESTAMP=(--timestamp)
 fi
-codesign --force --options runtime "${TIMESTAMP[@]}" --sign "$SIGN_IDENTITY" "$APP/Contents/Resources/pam_faceid.so"
 codesign --force --options runtime "${TIMESTAMP[@]}" --entitlements Resources/FaceID.entitlements --sign "$SIGN_IDENTITY" "$APP"
 codesign --verify --deep --strict "$APP"
 echo "==> done: $APP ($(du -sh "$APP" | cut -f1))"

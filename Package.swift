@@ -14,7 +14,7 @@ let package = Package(
             name: "FaceCore",
             path: "Sources/FaceCore"
         ),
-        // Menu bar app: setup, unlocking the lock screen, sudo requests, auto-lock
+        // Menu bar app: setup, unlocking the lock screen, auto-lock
         .executableTarget(
             name: "FaceID",
             dependencies: ["FaceCore"],

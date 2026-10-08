@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-/// A short diary of what FaceID did (scans, unlocks, sudo requests) in ~/Library/Logs/FaceID.log and in Console.
+/// A short diary of what FaceID did (scans, unlocks, auto-locks) in ~/Library/Logs/FaceID.log and in Console.
 /// Never contains the password or face data.
 public enum Log {
     private static let logger = Logger(subsystem: AppPaths.bundleID, category: "app")

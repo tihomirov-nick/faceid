@@ -16,7 +16,6 @@ final class TestModel: ObservableObject {
     private var counted = false
 
     static func present() {
-        guard !Island.shared.showsSudoPrompt else { return }
         let model = TestModel()
         Island.shared.show(.test(model)) { model.stop() }
         model.start()

@@ -2,7 +2,7 @@ import AppKit
 import FaceCore
 import SwiftUI
 
-/// FaceID lives in the notch, like Face ID in the iPhone's Dynamic Island: scans, sudo requests, face setup and the
+/// FaceID lives in the notch, like Face ID in the iPhone's Dynamic Island: scans, face setup, the controls and the
 /// auto-lock countdown grow out of the notch as a black island and shrink back into it. On a display without
 /// a notch (older Macs, external displays) the same island slides down from the top edge of the screen.
 @MainActor
@@ -15,7 +15,6 @@ final class Island: ObservableObject {
     enum Content {
         /// The Face ID glyph alone (the lock screen, the approval after unlocking).
         case scan(GlyphPhase, caption: String?)
-        case sudo(SudoPrompt)
         case enroll(EnrollModel)
         case test(TestModel)
         /// Seconds left before the auto-lock.
@@ -24,8 +23,6 @@ final class Island: ObservableObject {
         case home
         case more
         case faces
-        /// sudo needs Full Disk Access first.
-        case diskAccess
         case password(PasswordModel)
         case access
         /// Setup finished.
@@ -34,7 +31,6 @@ final class Island: ObservableObject {
         var kind: Int {
             switch self {
             case .scan: 0
-            case .sudo: 1
             case .enroll: 2
             case .test: 3
             case .countdown: 4
@@ -44,22 +40,21 @@ final class Island: ObservableObject {
             case .access: 8
             case .ready: 9
             case .faces: 10
-            case .diskAccess: 11
             }
         }
 
         /// Plain values rather than a model object.
         var isValue: Bool {
             switch self {
-            case .scan, .countdown, .home, .more, .faces, .diskAccess, .access, .ready: true
-            case .sudo, .enroll, .test, .password: false
+            case .scan, .countdown, .home, .more, .faces, .access, .ready: true
+            case .enroll, .test, .password: false
             }
         }
 
         /// Takes clicks and keys (buttons inside).
         var interactive: Bool {
             switch self {
-            case .sudo, .enroll, .test, .home, .more, .faces, .diskAccess, .password, .access: true
+            case .enroll, .test, .home, .more, .faces, .password, .access: true
             case .scan, .countdown, .ready: false
             }
         }
@@ -67,7 +62,7 @@ final class Island: ObservableObject {
         /// Closes when the user clicks elsewhere, as the Dynamic Island does.
         var closesOnOutsideClick: Bool {
             switch self {
-            case .home, .more, .faces, .diskAccess, .test, .password, .access: true
+            case .home, .more, .faces, .test, .password, .access: true
             default: false
             }
         }
@@ -94,12 +89,6 @@ final class Island: ObservableObject {
     }
 
     var isShowing: Bool { content != nil }
-
-    /// A sudo request is waiting for an answer: nothing else may take the island from it.
-    var showsSudoPrompt: Bool {
-        if case .sudo = content { return true }
-        return false
-    }
 
     /// Shows `content`, growing out of the notch (or morphing from what is shown now).
     func show(_ content: Content, onClose: (() -> Void)? = nil) {
@@ -179,7 +168,6 @@ final class Island: ObservableObject {
             hide()
             return
         }
-        guard !showsSudoPrompt else { return }
         if case .enroll = content { return }
         AppModel.shared.refresh()
         show(.home)
@@ -288,7 +276,6 @@ final class Island: ObservableObject {
 
     private func sameObject(_ a: Content, _ b: Content) -> Bool {
         switch (a, b) {
-        case let (.sudo(x), .sudo(y)): x === y
         case let (.enroll(x), .enroll(y)): x === y
         case let (.test(x), .test(y)): x === y
         default: false
@@ -320,8 +307,8 @@ final class Island: ObservableObject {
     }
 }
 
-/// A borderless panel at the top of the screen that may take keys without activating FaceID (Return in the sudo
-/// prompt goes to the island while Terminal stays the active app).
+/// A borderless panel at the top of the screen that may take keys without activating FaceID: Return and Escape
+/// reach the island while the app in front stays active.
 final class IslandPanel: NSPanel {
     var interactive = false
 
@@ -373,11 +360,11 @@ struct IslandGeometry: Equatable {
     /// Room at the top that the content must leave free: the notch hides it.
     var contentTop: CGFloat { notch?.height ?? 8 }
 
-    /// The controls: one button before setup, five switches and three buttons after.
+    /// The controls: one button before setup, four switches and three buttons after.
     @MainActor
     private var home: CGSize {
         let model = AppModel.shared
-        return model.isEnrolled ? CGSize(width: 384, height: contentTop + 194) : CGSize(width: 230, height: contentTop + 104)
+        return model.isEnrolled ? CGSize(width: 384, height: contentTop + 148) : CGSize(width: 230, height: contentTop + 104)
     }
 
     @MainActor
@@ -387,7 +374,6 @@ struct IslandGeometry: Equatable {
         switch content {
         case let .scan(_, caption):
             return CGSize(width: max(notchWidth + 10, caption == nil ? 190 : 230), height: top + (caption == nil ? 80 : 104))
-        case .sudo: return CGSize(width: 400, height: top + 71)
         case .enroll: return CGSize(width: 330, height: top + 362)
         case .test: return CGSize(width: 360, height: top + 258)
         case .countdown: return CGSize(width: max(notchWidth + 60, 240), height: top + 50)
@@ -398,7 +384,6 @@ struct IslandGeometry: Equatable {
             return CGSize(width: 360, height: top + 88 + CGFloat(count) * 41)
         case .password: return CGSize(width: 300, height: top + 98)
         case .access: return CGSize(width: 250, height: top + 96)
-        case .diskAccess: return CGSize(width: 300, height: top + 120)
         case .ready: return CGSize(width: max(notchWidth + 10, 190), height: top + 86)
         }
     }
@@ -508,8 +493,6 @@ struct IslandContentView: View {
                         .lineLimit(1)
                 }
             }
-        case let .sudo(prompt):
-            SudoPromptView(prompt: prompt, state: prompt.state)
         case let .enroll(model):
             EnrollView(enroll: model)
                 .environmentObject(AppModel.shared)
@@ -540,8 +523,6 @@ struct IslandContentView: View {
             PasswordPage(model: model)
         case .access:
             AccessPage()
-        case .diskAccess:
-            DiskAccessPage()
         case .ready:
             FaceIDGlyph(phase: .success, size: 58)
                 .padding(.top, 14)

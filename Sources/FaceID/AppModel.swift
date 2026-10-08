@@ -15,8 +15,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var cameraStatus = Camera.authorizationStatus
     @Published private(set) var accessibilityTrusted = LockScreen.canType
     @Published private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @Published private(set) var sudoState = PamInstaller.State.notInstalled
-    /// A problem to show in the controls for a moment (a failed sudo setup, say).
+    /// A problem to show in the controls for a moment (a face the keychain would not save, say).
     @Published var message: String?
     /// The typed password did not unlock the screen: it probably changed.
     @Published var passwordProblem = false
@@ -25,7 +24,6 @@ final class AppModel: ObservableObject {
 
     let unlock = UnlockService()
     let presence = PresenceService()
-    let sudo = SudoService()
 
     private init() {}
 
@@ -41,16 +39,14 @@ final class AppModel: ObservableObject {
         if isEnrolled { FaceEngine.preload() }
         unlock.start(model: self)
         presence.start(model: self)
-        sudo.start(model: self)
         Log.write("FaceID started · face: \(isEnrolled) · password: \(passwordSaved) · accessibility: \(accessibilityTrusted)")
     }
 
-    /// Permissions and the sudo module can change outside the app; checked when the controls open.
+    /// Permissions can change outside the app; checked when the controls open.
     func refresh() {
         cameraStatus = Camera.authorizationStatus
         accessibilityTrusted = LockScreen.canType
         launchAtLogin = SMAppService.mainApp.status == .enabled
-        sudoState = PamInstaller.state()
         passwordSaved = PasswordStore.exists
     }
 

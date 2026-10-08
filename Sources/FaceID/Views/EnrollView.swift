@@ -41,7 +41,6 @@ final class EnrollModel: ObservableObject {
 
     /// Opens the recording in the island and starts it.
     static func present(_ purpose: Purpose) {
-        guard !Island.shared.showsSudoPrompt else { return }
         let model = EnrollModel(purpose: purpose)
         Island.shared.show(.enroll(model)) { model.cancel() }
         model.begin()

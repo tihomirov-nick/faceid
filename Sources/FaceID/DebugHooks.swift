@@ -52,8 +52,6 @@ enum DebugHooks {
         }
     }
 
-    private static var demoPrompt: SudoPrompt?
-
     static func perform(_ action: String) {
         let parts = action.split(separator: "=", maxSplits: 1).map(String.init)
         let value = parts.count > 1 ? parts[1] : ""
@@ -61,7 +59,6 @@ enum DebugHooks {
         case "home": Island.shared.show(.home)
         case "more": Island.shared.show(.more)
         case "faces": Island.shared.show(.faces)
-        case "disk-access": Island.shared.show(.diskAccess)
         case "password": Island.shared.show(.password(PasswordModel()))
         case "access": Island.shared.show(.access)
         case "ready": Island.shared.show(.ready)
@@ -97,20 +94,6 @@ enum DebugHooks {
             }
         case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
         case "light": NSApp.appearance = NSAppearance(named: .aqua)
-        case "sudo-demo":
-            // sudo-demo=scanning|allowed|failed: changes the phase of the shown demo prompt, or shows one
-            let phase: SudoPrompt.Phase = value == "allowed" ? .allowed
-                : value == "failed" ? .failed(ScanHint.notRecognized.message) : .scanning
-            if let demoPrompt, Island.shared.showsSudoPrompt {
-                demoPrompt.state.phase = phase
-            } else {
-                let prompt = SudoPrompt(command: "sudo softwareupdate --install --all",
-                                        requester: Requester.find(from: getpid()) ?? Requester(name: L("Терминал"), icon: nil))
-                prompt.state.phase = phase
-                prompt.onPassword = { prompt.close() }
-                prompt.show()
-                demoPrompt = prompt
-            }
         case "demo-enrolled":
             // A face made of random numbers (in memory only) to show the "set up" state of the windows.
             let random = { (count: Int) in
