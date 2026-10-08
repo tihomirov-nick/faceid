@@ -48,6 +48,24 @@ struct CameraPreview: NSViewRepresentable {
     }
 }
 
+/// The camera picture where the island shows it (face setup, face check). Drawn offscreen (FACEID_RENDER), where an
+/// AppKit view cannot be drawn and there is no camera, it is the preview's empty dark background.
+struct CameraPicture: View {
+    let feed: PreviewFeed
+
+    var body: some View {
+        #if DEBUG
+        if DebugHooks.offscreen {
+            Color.black.opacity(0.85)
+        } else {
+            CameraPreview(feed: feed)
+        }
+        #else
+        CameraPreview(feed: feed)
+        #endif
+    }
+}
+
 final class PreviewLayerView: NSView {
     private let imageLayer = CALayer()
 

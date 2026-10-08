@@ -152,6 +152,16 @@ final class AppModel: ObservableObject {
     func setEnrollmentForDebugging(_ enrollment: Enrollment) {
         self.enrollment = enrollment
     }
+
+    /// Debug hooks only: a set-up FaceID in memory, the face given and the password and permissions counted as there,
+    /// so the controls can be drawn offscreen as after setup. Nothing is saved.
+    func setReadyForDebugging(_ enrollment: Enrollment) {
+        self.enrollment = enrollment
+        passwordSaved = true
+        cameraStatus = .authorized
+        accessibilityTrusted = true
+        keychainNeedsConfirmation = false
+    }
     #endif
 
     // MARK: - Owner

@@ -4,3 +4,4 @@ dist/
 Vendor/downloads/
 *.dmg
 .DS_Store
+promo/

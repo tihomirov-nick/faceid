@@ -212,7 +212,7 @@ struct EnrollView: View {
                 if enroll.phase == .starting {
                     FaceIDGlyph(phase: .scanning, size: 66)
                 } else {
-                    CameraPreview(feed: enroll.feed)
+                    CameraPicture(feed: enroll.feed)
                         .frame(width: 176, height: 176)
                         .clipShape(Circle())
                         .overlay(Circle().fill(.black.opacity(enroll.phase == .passDone ? 0.45 : 0)))

@@ -132,6 +132,12 @@ FACEID_ACTIONS="1:lock-flow;2:lock-check;6:lock-check" FACEID_QUIT_AFTER=7 .buil
 FACEID_RENDER=/tmp/island.png .build/debug/FaceID
 ```
 
+Если путь кончается на `/`, каждое состояние ложится в отдельную картинку в 4x с прозрачным фоном, от первого запуска до повседневной работы: `home-setup`, `enroll-start`, `enroll-scan`, `enroll-pass`, `enroll-done`, `password`, `access`, `camera`, `ready`, `scan`, `success`, `failure`, `countdown`, `home`, `faces`, `test`, `more`, `update`, `keychain` и кадры значка в строке меню (`menubar-*.png`, белые). После `home-setup` сборка рисует настроенный FaceID: два выдуманных лица, пароль и разрешения считаются выданными, все только в памяти. Картинку с камеры и поле пароля вне экрана не нарисовать, вместо них пустой темный фон и подсказка поля. Переключатели пульта берутся из настроек, их можно включить аргументами:
+
+```bash
+FACEID_RENDER=/tmp/states/ .build/debug/FaceID -unlockEnabled YES -autoLockEnabled YES -requireAttention YES -requireBlink YES
+```
+
 | Действие | Что делает |
 |---|---|
 | `lock-demo=scanning` (`success`, `failure`) | показывает островок экрана блокировки в его слое над всеми окнами |

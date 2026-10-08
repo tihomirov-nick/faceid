@@ -595,18 +595,38 @@ struct PasswordPage: View {
     @ObservedObject var model: PasswordModel
     @FocusState private var focused: Bool
 
+    private var secureField: some View {
+        SecureField(L("Пароль Mac"), text: $model.password)
+            .textFieldStyle(.plain)
+            .font(.system(size: 13))
+            .foregroundStyle(.white)
+            .focused($focused)
+            .onSubmit { model.save() }
+    }
+
+    /// The password field; drawn offscreen (FACEID_RENDER), where an AppKit text field cannot be, its placeholder.
+    @ViewBuilder private var field: some View {
+        #if DEBUG
+        if DebugHooks.offscreen {
+            Text(L("Пароль Mac"))
+                .font(.system(size: 13))
+                .foregroundStyle(.white.opacity(0.3))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            secureField
+        }
+        #else
+        secureField
+        #endif
+    }
+
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "key.fill")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.8))
-                SecureField(L("Пароль Mac"), text: $model.password)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.white)
-                    .focused($focused)
-                    .onSubmit { model.save() }
+                field
             }
             .padding(.horizontal, 14)
             .frame(height: 34)

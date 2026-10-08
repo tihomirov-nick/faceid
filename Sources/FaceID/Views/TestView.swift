@@ -134,7 +134,7 @@ struct TestView: View {
 
     private var preview: some View {
         ZStack {
-            CameraPreview(feed: test.feed)
+            CameraPicture(feed: test.feed)
             if let report = test.report, let face = report.face {
                 GeometryReader { geometry in
                     let mapping = PreviewMapping(imageSize: report.imageSize, viewSize: geometry.size)

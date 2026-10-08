@@ -125,6 +125,128 @@ enum DebugHooks {
         try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
     }
 
+    /// Drawing the island offscreen: views that ImageRenderer cannot draw (AppKit text fields, the camera preview) show
+    /// a stand-in.
+    static var offscreen = false
+
+    /// FACEID_RENDER=<folder>/: each state on its own picture at 4x, transparent around the island, which hangs from the
+    /// top edge as from the notch, from the first launch to everyday use: the controls before setup, the face setup
+    /// (start, a pass in progress, the first pass done, the end), the Mac password, the permissions, setup done, the lock
+    /// screen (scan, success, failure), the auto-lock countdown, the controls, the faces, the face check, the settings,
+    /// an update on offer, the keychain's confirmation, and the menu bar icon's frames (white, menubar-*.png). A set-up
+    /// FaceID is made up in memory: two faces of random numbers, the password and the permissions counted as given;
+    /// nothing is saved. The island is as tall as its content, as in the app.
+    static func renderStates(to folder: String) {
+        let geometry = IslandGeometry(screen: NSScreen.main)
+        FaceIDGlyph.debugSuccessTime = 10
+        offscreen = true
+        defer {
+            FaceIDGlyph.debugSuccessTime = nil
+            offscreen = false
+            UpdateCenter.preview = nil
+        }
+        try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        func write(_ name: String, _ content: Island.Content, _ view: some View) {
+            let flare = IslandGeometry.flare
+            let island = view
+                .frame(width: geometry.size(for: content).width)
+                .padding(.top, geometry.contentTop)
+                .padding(.bottom, Island.bottomPadding)
+                .background(IslandShape(flare: flare, radius: content.kind == 0 || content.kind == 4 ? 30 : 34)
+                    .fill(Color.black)
+                    .padding(.horizontal, -flare))
+                .padding(.horizontal, flare)
+                .environment(\.colorScheme, .dark)
+                .environmentObject(AppModel.shared)
+                .environmentObject(AppSettings.shared)
+            let renderer = ImageRenderer(content: island)
+            renderer.scale = 4
+            guard let image = renderer.cgImage else { return }
+            try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
+                .write(to: URL(fileURLWithPath: folder).appendingPathComponent("\(name).png"))
+        }
+        func content(_ content: Island.Content) -> some View { IslandContentView(content: content, island: Island.shared) }
+
+        // Before setup: the controls hold only the setup button.
+        write("home-setup", .home, HomePage())
+        AppModel.shared.setReadyForDebugging(demoEnrollment(faces: 2))
+
+        // The face setup.
+        let starting = EnrollModel(purpose: .first)
+        let scanning = EnrollModel(purpose: .first)
+        scanning.phase = .scanning(pass: 1)
+        let covered = (0..<EnrollmentSession.segments).map { [0, 1, 2, 3, 4, 5, 6, 7, 21, 22, 23].contains($0) }
+        scanning.progress = EnrollmentSession.Progress(pass: 1, covered: covered, frontal: 4, hint: .turnHead, face: nil,
+                                                       imageSize: .zero, direction: CGPoint(x: 18, y: 6))
+        let passDone = EnrollModel(purpose: .first)
+        passDone.phase = .passDone
+        let finished = EnrollModel(purpose: .first)
+        finished.phase = .finished
+        write("enroll-start", .enroll(starting), EnrollView(enroll: starting))
+        write("enroll-scan", .enroll(scanning), EnrollView(enroll: scanning))
+        write("enroll-pass", .enroll(passDone), EnrollView(enroll: passDone))
+        write("enroll-done", .enroll(finished), EnrollView(enroll: finished))
+        let password = PasswordModel()
+        write("password", .password(password), PasswordPage(model: password))
+        write("access", .access, content(.access))
+        write("camera", .camera, content(.camera))
+        write("ready", .ready, content(.ready))
+
+        // The lock screen and everyday use.
+        write("scan", .scan(.scanning, caption: nil), content(.scan(.scanning, caption: nil)))
+        write("success", .scan(.success, caption: nil), content(.scan(.success, caption: nil)))
+        write("failure", .scan(.failure, caption: nil), content(.scan(.failure, caption: nil)))
+        write("countdown", .countdown(5), content(.countdown(5)))
+        write("home", .home, HomePage())
+        write("faces", .faces, FacesPage())
+        let test = TestModel()
+        test.scanResult = .recognized(similarity: 0.8, embedding: [])
+        write("test", .test(test), TestView(test: test))
+        write("more", .more, MorePage())
+        UpdateCenter.preview = .available(Updater.Release(
+            version: "1.1.0", title: "FaceID 1.1.0",
+            notes: "FaceID разблокирует Mac лицом, как Face ID на iPhone. Когда вы будите заблокированный Mac и смотрите на него, "
+                + "у выреза экрана появляется островок и показывает, как идет распознавание. Когда лицо узнано, FaceID вводит пароль, "
+                + "а когда вы отходите от Mac, сам его блокирует.",
+            page: URL(string: "https://github.com/tihomirov-nick/faceid/releases/tag/v1.1.0")!,
+            dmg: URL(string: "https://github.com/tihomirov-nick/faceid/releases/download/v1.1.0/FaceID-1.1.0.dmg")!, size: 11_400_000))
+        write("update", .update, UpdatePage())
+        UpdateCenter.preview = nil
+        write("keychain", .keychain, KeychainPage())
+
+        // The menu bar icon at rest, scanning, with the checkmark and shaking "no": white at 8x.
+        let frames: [(String, MenuBarIcon.Frame)] = [("rest", .init()), ("scan", .init(face: 0.45, scan: 0.35)),
+                                                     ("check", .init(face: 0, check: 1)), ("shake", .init(shake: -1.5))]
+        for (name, frame) in frames {
+            let size = MenuBarIcon.canvas * 8
+            let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size), pixelsHigh: Int(size), bitsPerSample: 8,
+                                       samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                       bytesPerRow: 0, bitsPerPixel: 0)!
+            rep.size = NSSize(width: MenuBarIcon.canvas, height: MenuBarIcon.canvas)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            let bounds = NSRect(x: 0, y: 0, width: MenuBarIcon.canvas, height: MenuBarIcon.canvas)
+            MenuBarIcon.image(frame).draw(in: bounds)
+            NSColor.white.set()
+            bounds.fill(using: .sourceAtop)
+            NSGraphicsContext.restoreGraphicsState()
+            try? rep.representation(using: .png, properties: [:])?
+                .write(to: URL(fileURLWithPath: folder).appendingPathComponent("menubar-\(name).png"))
+        }
+    }
+
+    /// A face made of random numbers, in memory only.
+    private static func demoEnrollment(faces: Int) -> Enrollment {
+        let random = { (count: Int) in
+            (0..<count).map { _ in
+                Enrollment.Template(vector: FaceMatcher.normalized((0..<128).map { _ in Float.random(in: -1...1) }),
+                                    yaw: 0, pitch: 0, appearance: 0)
+            }
+        }
+        let enrollment = Enrollment(face: Enrollment.firstName, templates: random(57), openEyes: 0.25)
+        return faces == 2 ? enrollment.adding(face: L("Лицо %@", "2"), templates: random(29)) : enrollment
+    }
+
     static func perform(_ action: String) {
         let parts = action.split(separator: "=", maxSplits: 1).map(String.init)
         let value = parts.count > 1 ? parts[1] : ""
@@ -227,14 +349,7 @@ enum DebugHooks {
         case "light": NSApp.appearance = NSAppearance(named: .aqua)
         case "demo-enrolled":
             // A face made of random numbers (in memory only) to show the "set up" state of the windows.
-            let random = { (count: Int) in
-                (0..<count).map { _ in
-                    Enrollment.Template(vector: FaceMatcher.normalized((0..<128).map { _ in Float.random(in: -1...1) }),
-                                        yaw: 0, pitch: 0, appearance: 0)
-                }
-            }
-            let enrollment = Enrollment(face: Enrollment.firstName, templates: random(57), openEyes: 0.25)
-            AppModel.shared.debugSetEnrollment(value == "2" ? enrollment.adding(face: L("Лицо %@", "2"), templates: random(29)) : enrollment)
+            AppModel.shared.debugSetEnrollment(demoEnrollment(faces: value == "2" ? 2 : 1))
         default: break
         }
     }

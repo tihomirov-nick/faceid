@@ -6,7 +6,9 @@ Localization.apply()
 #if DEBUG
 // Debug hooks: FACEID_RENDER=<png> draws the island's states offscreen and quits before anything shows up on screen.
 if let path = ProcessInfo.processInfo.environment["FACEID_RENDER"] {
-    MainActor.assumeIsolated { DebugHooks.renderIsland(to: path) }
+    // Drawing only: an app that may never become active or show a window, so the app in front keeps the focus.
+    NSApplication.shared.setActivationPolicy(.prohibited)
+    MainActor.assumeIsolated { path.hasSuffix("/") ? DebugHooks.renderStates(to: path) : DebugHooks.renderIsland(to: path) }
     exit(0)
 }
 #endif
