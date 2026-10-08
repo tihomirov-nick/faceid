@@ -52,6 +52,79 @@ enum DebugHooks {
         }
     }
 
+    /// FACEID_RENDER=<png>: the island's states drawn offscreen with the app's own views, on one picture: scanning,
+    /// success, failure, the face setup step (and its end), and the success ring as it tumbles in. Called from main.swift
+    /// before the app starts, so nothing shows up on screen.
+    static func renderIsland(to path: String) {
+        let geometry = IslandGeometry(screen: NSScreen.main)
+        func island(_ content: Island.Content, _ view: () -> some View) -> some View {
+            let size = geometry.size(for: content)
+            return ZStack(alignment: .top) {
+                IslandShape(flare: IslandGeometry.flare, radius: content.kind == 0 ? 30 : 34)
+                    .fill(Color.black)
+                    .frame(width: size.width + 2 * IslandGeometry.flare, height: size.height)
+                view()
+                    .frame(width: size.width)
+                    .padding(.top, geometry.contentTop)
+            }
+            .frame(width: size.width + 2 * IslandGeometry.flare, height: size.height, alignment: .top)
+        }
+        func label(_ text: String) -> some View {
+            Text(verbatim: text).font(.system(size: 13, weight: .medium)).foregroundColor(.white).fixedSize()
+        }
+        FaceIDGlyph.debugSuccessTime = 10
+        defer { FaceIDGlyph.debugSuccessTime = nil }
+        let starting = EnrollModel(purpose: .first)
+        let finished = EnrollModel(purpose: .first)
+        finished.phase = .finished
+        let scans: [(String, GlyphPhase)] = [("Сканирование", .scanning), ("Успех", .success), ("Неудача", .failure)]
+        let sheet = VStack(alignment: .leading, spacing: 28) {
+            HStack(alignment: .top, spacing: 36) {
+                ForEach(scans, id: \.0) { name, phase in
+                    VStack(spacing: 10) {
+                        island(.scan(phase, caption: nil)) {
+                            IslandContentView(content: .scan(phase, caption: nil), island: Island.shared)
+                        }
+                        label(name)
+                    }
+                }
+                VStack(spacing: 10) {
+                    island(.ready) { IslandContentView(content: .ready, island: Island.shared) }
+                    label("Готово (конец настройки)")
+                }
+            }
+            HStack(alignment: .top, spacing: 36) {
+                VStack(spacing: 10) {
+                    island(.enroll(starting)) { EnrollView(enroll: starting) }
+                    label("Запись лица: начало")
+                }
+                VStack(spacing: 10) {
+                    island(.enroll(finished)) { EnrollView(enroll: finished) }
+                    label("Запись лица: готово")
+                }
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 14) {
+                        ForEach([0.15, 0.35, 0.55, 0.85, 1.2], id: \.self) { time in
+                            SuccessRing(time: time, size: 58)
+                                .frame(width: 58, height: 58)
+                                .padding(10)
+                                .background(Color.black, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+                    }
+                    label("Кольцо успеха: 0,15 · 0,35 · 0,55 · 0,85 · 1,2 с")
+                }
+            }
+        }
+        .padding(36)
+        .background(Color(white: 0.42))
+        .environment(\.colorScheme, .dark)
+        let renderer = ImageRenderer(content: sheet)
+        renderer.scale = 2
+        guard let image = renderer.cgImage else { return }
+        let rep = NSBitmapImageRep(cgImage: image)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
+
     static func perform(_ action: String) {
         let parts = action.split(separator: "=", maxSplits: 1).map(String.init)
         let value = parts.count > 1 ? parts[1] : ""
@@ -69,8 +142,109 @@ enum DebugHooks {
             EnrollModel.presentDemo(value)
         case "island-hide": Island.shared.hide()
         case "lock-demo":
-            // lock-demo=scanning|failure: the lock screen island (over the desktop here)
-            Island.lockScreen.show(.scan(value == "failure" ? .failure : .scanning, caption: nil))
+            // lock-demo=scanning|success|failure: the lock screen island, in its space above every window (here over the
+            // desktop)
+            let phase: GlyphPhase = value == "success" ? .success : value == "failure" ? .failure : .scanning
+            Island.lockScreen.show(.scan(phase, caption: nil))
+        case "lock-flow":
+            // A face recognized on the lock screen, over the desktop here: scanning, the green ring, and half a second
+            // later the screen "unlocks" and the approval finishes as after a real unlock.
+            Island.lockScreen.show(.scan(.scanning, caption: nil))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                MainActor.assumeIsolated {
+                    let approvedAt = Date()
+                    // As UnlockService does when the face is recognized.
+                    if Island.lockScreen.aboveLockScreen {
+                        Island.lockScreen.show(.scan(.success, caption: nil))
+                    } else {
+                        Island.lockScreen.hide()
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        MainActor.assumeIsolated { AppModel.shared.unlock.playApproval(since: approvedAt) }
+                    }
+                }
+            }
+        case "lock-hide": Island.lockScreen.hide()
+        case "lock-cover":
+            // A red window above the lock screen island's own window level, in the ordinary space: the island, in its
+            // space, still shows above it.
+            guard let screen = Island.targetScreen() else { break }
+            let cover = NSPanel(contentRect: NSRect(x: screen.frame.midX - 180, y: screen.frame.maxY - 170, width: 360, height: 170),
+                                styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            cover.backgroundColor = .systemRed
+            cover.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 5)
+            cover.ignoresMouseEvents = true
+            cover.collectionBehavior = [.canJoinAllSpaces, .stationary]
+            cover.orderFrontRegardless()
+            self.cover = cover
+        case "lock-check":
+            // What the lock screen island could disturb: the focused app, secure input, the key window, clicks.
+            Log.write("lock check: above the lock screen \(Island.lockScreen.aboveLockScreen) · space "
+                + "\(LockScreenSpace.shared?.space.map(String.init) ?? "-") · \(LockScreen.focusDiagnostics) · frontmost "
+                + "\(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0) · FaceID \(getpid()) active \(NSApp.isActive) · "
+                + "key window \(NSApp.keyWindow.map { "\($0.windowNumber)" } ?? "-") · a click on the island goes to \(clickTarget())")
+        case "setup": Setup.next()
+        case "permission-request":
+            // permission-request=accessibility|camera: as the "Allow" button of the setup's permission step
+            if value == "camera" { AppModel.shared.requestCamera() } else { AppModel.shared.requestAccessibility() }
+        case "permission-status":
+            // The permissions as FaceID sees them, to the log
+            Log.write("permissions: camera \(Camera.authorizationStatus.rawValue) (3 granted, 2 denied, 0 not asked) · accessibility \(LockScreen.canType)")
+        case "keychain-seed-legacy":
+            // FaceID 1.0's two items with made-up contents, in the development build's own keychain items
+            let face = Enrollment(face: Enrollment.firstName, templates: [
+                Enrollment.Template(vector: FaceMatcher.normalized((0..<128).map { _ in Float.random(in: -1...1) }), yaw: 0, pitch: 0, appearance: 0),
+            ], openEyes: 0.25)
+            let encoder = PropertyListEncoder()
+            encoder.outputFormat = .binary
+            if let data = try? encoder.encode(face) { KeychainDebug.seedLegacy(face: data) }
+            Log.write("keychain: seeded the old items · \(KeychainDebug.report)")
+        case "keychain-check":
+            // Silently, as at launch: what the keychain lets this build do
+            Log.write("keychain check: \(KeychainAccess.check()) · \(KeychainDebug.report)")
+        case "keychain-load":
+            AppModel.shared.loadSecrets()
+            Log.write("keychain load: face \(AppModel.shared.isEnrolled) · needs a confirmation \(AppModel.shared.keychainNeedsConfirmation)")
+        case "keychain-password":
+            // Silently, as on the lock screen: whether the password comes (never the password itself)
+            Log.write("keychain password: \(PasswordStore.load() == nil ? "none" : "present")")
+        case "keychain-move":
+            Log.write("keychain move: \(KeychainDebug.moveSilently()) · \(KeychainDebug.report)")
+        case "keychain-wipe":
+            Log.write("keychain wipe: \(KeychainDebug.wipe())")
+        case "update-demo":
+            // update-demo=available|downloading|installing|failed|cannot|offline|checking|uptodate|off: the update
+            // interface in that state (nothing is downloaded)
+            UpdateCenter.preview = Self.updateState(value)
+            UpdateCenter.shared.updater.objectWillChange.send()
+            if value != "off", Island.shared.content?.kind != Island.Content.update.kind { Island.shared.show(.update) }
+        case "update-check-menu":
+            // As "Check for Updates…" in the menu bar icon's menu (asks GitHub for real)
+            UpdateCenter.shared.checkFromMenu()
+        case "update-state":
+            // update-state=<as update-demo>: only the state, for the settings row
+            UpdateCenter.preview = Self.updateState(value)
+            UpdateCenter.shared.updater.objectWillChange.send()
+        case "menubar-sheet":
+            // menubar-sheet=<png>: the menu bar icon's frames enlarged and at their real size
+            MenuBarIcon.debugSheet(to: value)
+        case "menubar":
+            // menubar=scanning|success|failure|idle: the menu bar icon's moment
+            let moment: MenuBarIcon.Moment = value == "scanning" ? .scanning : value == "success" ? .success : value == "failure" ? .failure : .idle
+            StatusItemController.shared.show(moment)
+        case "sound":
+            // sound=success|failure|start|tick|delete|sent
+            if let event = SoundEffects.Event.allCases.first(where: { "\($0)" == value }) { SoundEffects.play(event) }
+        case "sounds":
+            // Every sound, 1.6 s apart.
+            for (index, event) in SoundEffects.Event.allCases.enumerated() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 1.6) {
+                    MainActor.assumeIsolated {
+                        Log.write("sound: \(event)")
+                        SoundEffects.play(event)
+                    }
+                }
+            }
         case "scan-demo":
             let phase: GlyphPhase = value == "success" ? .success : value == "failure" ? .failure : value == "idle" ? .idle : .scanning
             Island.shared.show(.scan(phase, caption: nil))
@@ -106,6 +280,40 @@ enum DebugHooks {
             AppModel.shared.debugSetEnrollment(value == "2" ? enrollment.adding(face: L("Лицо %@", "2"), templates: random(29)) : enrollment)
         default: break
         }
+    }
+
+    /// The red window of "lock-cover".
+    private static var cover: NSPanel?
+
+    private static func updateState(_ name: String) -> Updater.State? {
+        let release = Updater.Release(
+            version: "1.1.0", title: "FaceID 1.1.0",
+            notes: "## Что нового\n- Островок со сканированием прямо на экране блокировки\n- Звуки при разблокировке и ошибках\n- Обновление из GitHub",
+            page: URL(string: "https://github.com/tihomirov-nick/faceid/releases/tag/v1.1.0")!,
+            dmg: URL(string: "https://github.com/tihomirov-nick/faceid/releases/download/v1.1.0/FaceID-1.1.0.dmg")!, size: 11_400_000)
+        switch name {
+        case "available": return .available(release)
+        case "downloading": return .downloading(release, progress: 0.42)
+        case "installing": return .installing(release)
+        case "failed": return .failed(.notTrusted, release)
+        case "cannot": return .failed(.cannotReplace, release)
+        case "offline": return .failed(.offline, nil)
+        case "checking": return .checking
+        case "uptodate": return .upToDate
+        default: return nil
+        }
+    }
+
+    /// The process a click in the middle of the lock screen island would reach, by the Accessibility hit test.
+    private static func clickTarget() -> String {
+        guard let content = Island.lockScreen.content, let screen = Island.targetScreen(),
+              let top = NSScreen.screens.first?.frame.maxY else { return "-" }
+        let y = screen.frame.maxY - Island.lockScreen.size(for: content).height / 2
+        var element: AXUIElement?
+        var pid: pid_t = 0
+        guard AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(screen.frame.midX), Float(top - y), &element) == .success,
+              let element, AXUIElementGetPid(element, &pid) == .success else { return "nothing" }
+        return "\(pid)"
     }
 }
 

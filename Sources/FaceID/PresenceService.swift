@@ -50,6 +50,8 @@ final class PresenceService {
             stopWatching()
             LockScreen.lock()
         } else if Double(left) <= Self.warning, !Island.shared.isShowing || countingDown {
+            // A sound as the countdown begins: the owner is probably not looking at the screen.
+            if !countingDown { SoundEffects.play(.start) }
             countingDown = true
             Island.shared.show(.countdown(left))
         } else {

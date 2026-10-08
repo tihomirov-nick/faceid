@@ -11,8 +11,8 @@ enum GlyphPhase: Equatable {
 
 // MARK: - Face ID glyph
 
-/// Face ID as on iPhone: Apple's face glyph while scanning; when recognized, the face gives way to a glowing green
-/// ring that tumbles in, settles and gets a checkmark (the Dynamic Island animation); when not, the face shakes "no".
+/// Face ID as on iPhone: FaceID's face (`FaceMarkView`) while scanning; when recognized, the face gives way to a glowing
+/// green ring that tumbles in, settles and gets a checkmark (the Dynamic Island animation); when not, the face shakes "no".
 struct FaceIDGlyph: View {
     var phase: GlyphPhase = .idle
     var size: CGFloat = 64
@@ -27,8 +27,7 @@ struct FaceIDGlyph: View {
 
     var body: some View {
         ZStack {
-            Image(systemName: "faceid")
-                .font(.system(size: size * 0.9, weight: .light))
+            FaceMarkView(pointSize: size * 0.9)
                 .foregroundStyle(color)
                 .opacity(phase == .success ? 0 : (phase == .scanning && breathe ? 0.55 : 1))
                 .scaleEffect(phase == .success ? 0.6 : 1)
@@ -48,7 +47,7 @@ struct FaceIDGlyph: View {
                 }
             if phase == .success {
                 TimelineView(.animation(paused: reduceMotion)) { context in
-                    SuccessRing(time: reduceMotion ? 10 : successStart.map { context.date.timeIntervalSince($0) } ?? 10, size: size)
+                    SuccessRing(time: successTime(at: context.date), size: size)
                 }
             }
         }
@@ -65,12 +64,50 @@ struct FaceIDGlyph: View {
         .accessibilityLabel("FaceID")
     }
 
+    #if DEBUG
+    /// Debug hooks: the success animation shown at this moment (seconds) whatever the clock says, for drawing it offscreen.
+    static var debugSuccessTime: Double?
+    #endif
+
+    private func successTime(at date: Date) -> Double {
+        #if DEBUG
+        if let time = Self.debugSuccessTime { return time }
+        #endif
+        return reduceMotion ? 10 : successStart.map { date.timeIntervalSince($0) } ?? 10
+    }
+
     private func startBreathing() {
         guard phase == .scanning, !reduceMotion else {
             breathe = false
             return
         }
         withAnimation(.easeInOut(duration: 0.75).repeatForever(autoreverses: true)) { breathe = true }
+    }
+}
+
+/// FaceID's face (`FaceMark`) in SwiftUI, where the island used the SF Symbol `faceid` at light weight: laid out as that
+/// symbol was for a font of `pointSize` (1.19 × 1.11 of it), with the mark in the middle as big as the symbol's ink
+/// (0.935 of it) and with lines as thin, filled with the foreground style.
+struct FaceMarkView: View {
+    var pointSize: CGFloat
+
+    var body: some View {
+        FaceMarkShape()
+            .frame(width: pointSize * 0.935, height: pointSize * 0.935)
+            .frame(width: (pointSize * 1.19).rounded(), height: (pointSize * 1.11).rounded())
+    }
+}
+
+/// The mark with light lines, in the largest square that fits.
+struct FaceMarkShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let size = min(rect.width, rect.height)
+        let move = CGAffineTransform(translationX: rect.midX - size / 2, y: rect.midY - size / 2)
+        var path = Path()
+        for part in FaceMark.corners(size: size, lines: .light) + FaceMark.face(size: size, lines: .light) {
+            path.addPath(Path(part), transform: move)
+        }
+        return path
     }
 }
 
@@ -151,12 +188,8 @@ enum Haptics {
 // MARK: - Menu bar
 
 extension NSImage {
-    /// The Face ID glyph as a template image for the menu bar.
+    /// FaceID's face (`FaceMark`) as a template image for the menu bar, at rest (see `MenuBarIcon`).
     static func faceGlyph() -> NSImage {
-        let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
-        let image = NSImage(systemSymbolName: "faceid", accessibilityDescription: "FaceID")?
-            .withSymbolConfiguration(configuration) ?? NSImage()
-        image.isTemplate = true
-        return image
+        MenuBarIcon.image(.init())
     }
 }

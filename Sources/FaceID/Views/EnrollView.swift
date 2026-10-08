@@ -65,10 +65,7 @@ final class EnrollModel: ObservableObject {
                 if !closed { close() }
                 return
             }
-            if Camera.authorizationStatus == .notDetermined {
-                _ = await Camera.requestAccess()
-                AppModel.shared.refresh()
-            }
+            if !Camera.isAuthorized { await AppModel.shared.askForCamera() }
             startCamera()
         }
     }
@@ -77,7 +74,7 @@ final class EnrollModel: ObservableObject {
         let model = AppModel.shared
         guard !closed else { return }
         guard Camera.isAuthorized else {
-            phase = .failed(Camera.Failure.notAuthorized.localizedDescription)
+            fail(Camera.Failure.notAuthorized.localizedDescription)
             return
         }
         let session = EnrollmentSession(appearance: 0, allowExternalCamera: model.settings.allowExternalCamera)
@@ -89,7 +86,7 @@ final class EnrollModel: ObservableObject {
                 }
             }
         } catch {
-            phase = .failed(error.localizedDescription)
+            fail(error.localizedDescription)
             return
         }
         self.session = session
@@ -101,12 +98,18 @@ final class EnrollModel: ObservableObject {
         }
     }
 
+    private func fail(_ message: String) {
+        phase = .failed(message)
+        SoundEffects.play(.failure)
+    }
+
     private func update(_ progress: EnrollmentSession.Progress) {
         guard case let .scanning(pass) = phase, progress.pass == pass else { return }
         self.progress = progress
         guard progress.done else { return }
         Haptics.success()
         if pass == 1 {
+            SoundEffects.play(.tick)
             phase = .passDone
         } else {
             // The second circle is complete: keep the face right away and show the checkmark.
@@ -145,6 +148,8 @@ final class EnrollModel: ObservableObject {
             model.save(Enrollment(face: Enrollment.firstName, templates: templates, openEyes: openEyes))
         }
         phase = .finished
+        SoundEffects.play(.success)
+        StatusItemController.shared.show(.success)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             MainActor.assumeIsolated { self?.done() }
         }

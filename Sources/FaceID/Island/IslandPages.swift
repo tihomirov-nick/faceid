@@ -4,45 +4,58 @@ import SwiftUI
 
 // MARK: - Setup
 
-/// First setup goes step by step in the island, each step a single action: the face, the login password,
-/// permission to type it, then a checkmark. Steps already done are skipped.
+/// First setup goes step by step in the island, each step a single action: the face, the login password, permission to
+/// type it, then a checkmark. Steps already done are skipped. After an update or a change of signature the same steps
+/// bring FaceID back: the keychain's confirmation first, then the camera and Accessibility if macOS forgot them.
 @MainActor
 enum Setup {
     static func next() {
         let model = AppModel.shared
         model.refresh()
-        if !model.isEnrolled {
+        if model.keychainNeedsConfirmation {
+            Island.shared.show(.keychain)
+        } else if !model.isEnrolled {
             EnrollModel.present(.first)
         } else if !model.passwordSaved {
             Island.shared.show(.password(PasswordModel()))
+        } else if model.cameraStatus != .authorized {
+            Island.shared.show(.camera)
+            PermissionWatcher.start(.camera)
         } else if !model.accessibilityTrusted {
             Island.shared.show(.access)
-            AccessWatcher.start()
+            PermissionWatcher.start(.accessibility)
         } else {
             model.settings.unlockEnabled = true
             if !model.launchAtLogin { model.setLaunchAtLogin(true) }
             Haptics.success()
+            // Right after the face was recorded its own success sound has just played.
+            let afterFace = if case .enroll = Island.shared.content { true } else { false }
+            if !afterFace { SoundEffects.play(.success) }
             Island.shared.show(.ready)
             Island.shared.hide(after: 1.6)
         }
     }
 }
 
-/// Waits for the Accessibility permission to be granted in System Settings, then goes on with the setup.
+/// Waits for a permission to be granted (in System Settings, or in the camera prompt), then goes on with the setup.
 @MainActor
-enum AccessWatcher {
+enum PermissionWatcher {
     private static var timer: Timer?
 
-    static func start() {
+    static func start(_ kind: PermissionPage.Kind) {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             MainActor.assumeIsolated {
-                guard case .access = Island.shared.content else {
+                let showing = switch (kind, Island.shared.content) {
+                case (.accessibility, .access?), (.camera, .camera?): true
+                default: false
+                }
+                guard showing else {
                     timer?.invalidate()
                     timer = nil
                     return
                 }
-                guard LockScreen.canType else { return }
+                guard kind.granted else { return }
                 timer?.invalidate()
                 timer = nil
                 NSApp.activate(ignoringOtherApps: true)
@@ -115,7 +128,8 @@ struct HomePage: View {
         } else {
             VStack(spacing: 12) {
                 FaceIDGlyph(phase: .idle, size: 46, color: FaceIDGlyph.green)
-                Button(L("Настроить FaceID")) { Setup.next() }
+                // After an update the face is still there: the keychain only has to let FaceID read it again.
+                Button(model.keychainNeedsConfirmation ? L("Продолжить настройку") : L("Настроить FaceID")) { Setup.next() }
                     .appButton(.primary)
                     .keyboardShortcut(.defaultAction)
             }
@@ -277,8 +291,7 @@ struct FacesPage: View {
 
     private func row(_ face: Enrollment.Face) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "faceid")
-                .font(.system(size: 16, weight: .light))
+            FaceMarkView(pointSize: 16)
                 .frame(width: 20)
             if editing == face.id {
                 TextField("", text: $name)
@@ -312,7 +325,11 @@ struct FacesPage: View {
             if deleting == face.id {
                 Button(L("Удалить")) {
                     deleting = nil
-                    Task { if await model.confirmOwner() { model.removeFace(face.id) } }
+                    Task {
+                        guard await model.confirmOwner() else { return }
+                        model.removeFace(face.id)
+                        SoundEffects.play(.delete)
+                    }
                 }
                 .appButton(.destructive)
                 .controlSize(.mini)
@@ -406,6 +423,7 @@ struct PageHeader: View {
 struct MorePage: View {
     @ObservedObject private var model = AppModel.shared
     @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var updater = UpdateCenter.shared.updater
 
     var body: some View {
         VStack(spacing: 8) {
@@ -419,10 +437,18 @@ struct MorePage: View {
                              options: [(15, L("15 с")), (30, L("30 с")), (60, L("1 мин")), (120, L("2 мин")), (300, L("5 мин"))])
                 }
                 Row(title: L("Анимация разблокировки")) { Switch(isOn: $settings.lockScreenBadge) }
+                    .help(L("Показывает значок лица над экраном блокировки, пока идет проверка, и зеленую галочку после разблокировки"))
+                Row(title: L("Звуковые эффекты")) { Switch(isOn: $settings.soundEffects) }
+                    .help(L("FaceID подает короткий звук при разблокировке лицом и неудачной проверке, при записи и удалении лица и перед автоблокировкой. Громкость у него как у звуков предупреждений, а если в Системных настройках, в разделе «Звук», выключены звуковые эффекты интерфейса, звука нет"))
                 Row(title: L("Внешние камеры")) { Switch(isOn: $settings.allowExternalCamera) }
-                Row(title: L("Запускать при входе"), last: true) {
+                Row(title: L("Запускать при входе")) {
                     Switch(isOn: Binding(get: { model.launchAtLogin }, set: { model.setLaunchAtLogin($0) }))
                 }
+                Row(title: L("Проверять обновления")) {
+                    Switch(isOn: Binding(get: { updater.automaticChecks }, set: { updater.automaticChecks = $0 }))
+                }
+                .help(L("Раз в сутки FaceID смотрит, нет ли новой версии на GitHub, и предлагает обновиться. Без вашего согласия ничего не ставится"))
+                Row(title: L("Версия %@", updater.currentVersion), last: true) { UpdateStatus(updater: updater) }
             }
             .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             HStack(spacing: 6) {
@@ -459,6 +485,8 @@ struct MorePage: View {
             .overlay(alignment: .bottom) {
                 if !last { Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1).padding(.leading, 12) }
             }
+            // A tooltip shows wherever the pointer rests on the row.
+            .contentShape(Rectangle())
         }
     }
 }
@@ -555,6 +583,7 @@ final class PasswordModel: ObservableObject {
                 Setup.next()
             } else {
                 Haptics.failure()
+                SoundEffects.play(.failure)
                 wrong += 1
             }
         }
@@ -614,24 +643,116 @@ struct PasswordPage: View {
     }
 }
 
-// MARK: - Accessibility
+// MARK: - Permissions
 
-/// Permission to type the password on the lock screen: one button; the island moves on by itself once it is given.
-struct AccessPage: View {
+/// A permission FaceID needs: Accessibility to type the password on the lock screen, the camera to see the face. One
+/// button; the island moves on by itself once it is given.
+struct PermissionPage: View {
+    enum Kind {
+        case accessibility
+        case camera
+
+        @MainActor var granted: Bool {
+            switch self {
+            case .accessibility: LockScreen.canType
+            case .camera: Camera.isAuthorized
+            }
+        }
+    }
+
+    let kind: Kind
+
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: "accessibility")
+            Image(systemName: kind == .camera ? "camera.fill" : "accessibility")
                 .font(.system(size: 26, weight: .regular))
                 .foregroundStyle(.white)
             HStack(spacing: 8) {
                 Button(L("Позже")) { Island.shared.hide() }
                     .appButton(.secondary)
-                Button(L("Разрешить")) { AppModel.shared.requestAccessibility() }
-                    .appButton(.primary)
-                    .keyboardShortcut(.defaultAction)
+                Button(L("Разрешить")) {
+                    switch kind {
+                    case .accessibility: AppModel.shared.requestAccessibility()
+                    case .camera: AppModel.shared.requestCamera()
+                    }
+                }
+                .appButton(.primary)
+                .keyboardShortcut(.defaultAction)
+                .help(kind == .camera ? L("FaceID узнает лицо камерой. Изображения не покидают Mac и не сохраняются")
+                                      : L("Разрешение «Универсального доступа» нужно, чтобы вводить пароль на экране блокировки"))
             }
         }
         .padding(.top, 12)
+    }
+}
+
+// MARK: - Keychain
+
+/// FaceID was updated or signed differently, and the keychain asks once more before FaceID may read the face and the
+/// password. One button starts it; the keychain's own prompt asks for the Mac password. "Always Allow" lets this build
+/// in for good, "Allow" only this once.
+struct KeychainPage: View {
+    @State private var asking = false
+    @State private var onlyOnce = false
+    @State private var refusals = 0
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "key.fill")
+                .font(.system(size: 24, weight: .regular))
+                .foregroundStyle(.white)
+                .keyframeAnimator(initialValue: 0.0, trigger: refusals) { view, offset in
+                    view.offset(x: offset)
+                } keyframes: { _ in
+                    KeyframeTrack {
+                        LinearKeyframe(0, duration: 0.01)
+                        SpringKeyframe(-8, duration: 0.08)
+                        SpringKeyframe(8, duration: 0.1)
+                        SpringKeyframe(-5, duration: 0.1)
+                        SpringKeyframe(0, duration: 0.12)
+                    }
+                }
+            Text(onlyOnce ? L("Нажмите «Разрешать всегда», чтобы macOS не спрашивала снова") : L("Введите пароль Mac и нажмите «Разрешать всегда»"))
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(.white.opacity(0.8))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            HStack(spacing: 8) {
+                Button(L("Позже")) { Island.shared.hide() }
+                    .appButton(.secondary)
+                Button(asking ? L("Жду…") : L("Продолжить")) { confirm() }
+                    .appButton(.primary)
+                    .disabled(asking)
+                    .keyboardShortcut(.defaultAction)
+                    .help(L("FaceID обновился, и macOS спросит, можно ли ему снова читать лицо и пароль из Связки ключей"))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 12)
+    }
+
+    private func confirm() {
+        asking = true
+        // The keychain's prompt is another window: clicks in it must not close the island.
+        Island.shared.keepOpen = true
+        Task {
+            let result = await AppModel.shared.confirmKeychain()
+            Island.shared.keepOpen = false
+            asking = false
+            switch result {
+            case .granted:
+                Setup.next()
+            case .onlyOnce:
+                onlyOnce = true
+                refusals += 1
+                Haptics.failure()
+                SoundEffects.play(.failure)
+            case .denied:
+                refusals += 1
+                Haptics.failure()
+                SoundEffects.play(.failure)
+            }
+        }
     }
 }
 
@@ -693,23 +814,34 @@ final class NotchHotspot {
     }
 }
 
-/// The Face ID glyph in the menu bar: a click opens the controls in the island, a right click offers Quit.
+/// The Face ID glyph in the menu bar (`MenuBarIcon`): a click opens the controls in the island, a right click offers
+/// Quit. It moves when a face is checked.
 @MainActor
 final class StatusItemController: NSObject {
+    static let shared = StatusItemController()
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    private let icon = MenuBarIcon()
 
-    override init() {
+    private override init() {
         super.init()
-        item.button?.image = .faceGlyph()
+        icon.onFrame = { [weak self] image in self?.item.button?.image = image }
+        item.button?.image = icon.still
+        item.button?.setAccessibilityLabel("FaceID")
         item.button?.target = self
         item.button?.action = #selector(clicked)
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    /// A moment of a face check: the scan line, the checkmark, the head shake.
+    func show(_ moment: MenuBarIcon.Moment) {
+        icon.play(moment)
     }
 
     @objc private func clicked() {
         if NSApp.currentEvent?.type == .rightMouseUp {
             let menu = NSMenu()
             menu.addItem(withTitle: L("Заблокировать экран"), action: #selector(lockScreen), keyEquivalent: "").target = self
+            menu.addItem(withTitle: L("Проверить обновления…"), action: #selector(checkForUpdates), keyEquivalent: "").target = self
             menu.addItem(.separator())
             menu.addItem(withTitle: L("Выйти из FaceID"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
             item.menu = menu
@@ -722,5 +854,9 @@ final class StatusItemController: NSObject {
 
     @objc private func lockScreen() {
         LockScreen.lock()
+    }
+
+    @objc private func checkForUpdates() {
+        UpdateCenter.shared.checkFromMenu()
     }
 }

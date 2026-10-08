@@ -10,21 +10,28 @@ unset SDKROOT
 
 APP_NAME="FaceID"
 BUNDLE_ID="${BUNDLE_ID:-com.faceid.app}"
-VERSION="${VERSION:-1.0.0}"
+VERSION="${VERSION:-1.1.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
 APP="$ROOT/build/$APP_NAME.app"
 MODELS=(SFace)
 
-# Signing. macOS remembers the camera and Accessibility permissions and the keychain items by the app's signature.
-# An ad-hoc signature changes with every build, so each rebuild would need the permissions granted again;
-# a certificate keeps them. By default the first "Developer ID Application" or "Apple Development" certificate in
-# the keychain is used, otherwise ad-hoc. SIGN_IDENTITY="-" forces ad-hoc.
+# Signing. macOS remembers the camera and Accessibility permissions, and the keychain the apps it trusts, by the app's
+# signature (its designated requirement). An ad-hoc signature changes with every build, so each rebuild would need the
+# permissions granted again; a certificate keeps them, and FaceID's updater installs only a version signed with the same
+# certificate. The identity: SIGN_IDENTITY from the environment, otherwise the project's own certificate
+# "tihomirov-nick" (self-signed, no e-mail address inside), otherwise the first "Developer ID Application" or
+# "Apple Development" certificate, otherwise ad-hoc. SIGN_IDENTITY="-" forces ad-hoc.
 if [ -z "${SIGN_IDENTITY:-}" ]; then
-    SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
-        | awk -F'"' '/Developer ID Application/ {print $2; exit}')
-    [ -n "$SIGN_IDENTITY" ] || SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
-        | awk -F'"' '/Apple Development/ {print $2; exit}')
-    SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+    # Without -v: a self-signed certificate counts as "not trusted", and -v would leave it out.
+    if security find-identity -p codesigning 2>/dev/null | grep -q '"tihomirov-nick"'; then
+        SIGN_IDENTITY="tihomirov-nick"
+    else
+        SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
+            | awk -F'"' '/Developer ID Application/ {print $2; exit}')
+        [ -n "$SIGN_IDENTITY" ] || SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
+            | awk -F'"' '/Apple Development/ {print $2; exit}')
+        SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+    fi
 fi
 
 # 1. Models (converted ones are in git; scripts/fetch_models.sh rebuilds them)
@@ -107,7 +114,8 @@ printf "APPL????" > "$APP/Contents/PkgInfo"
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
 # 4. Sign. The hardened runtime keeps other programs from injecting code into FaceID, which holds the login password.
-echo "==> codesign ($SIGN_IDENTITY)"
+# Apple's certificates carry an e-mail address in their name: the log shows only the part before ":".
+echo "==> codesign (${SIGN_IDENTITY%%:*})"
 xattr -cr "$APP"
 if [ "$SIGN_IDENTITY" = "-" ]; then
     TIMESTAMP=(--timestamp=none)

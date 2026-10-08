@@ -67,6 +67,7 @@ final class TestModel: ObservableObject {
 
     /// The same scan as on the lock screen (same rules and time limit), without typing the password.
     func runScan() {
+        guard !UpdateCenter.shared.isInstalling else { return }
         let model = AppModel.shared
         camera?.stop()
         camera = nil
@@ -75,6 +76,7 @@ final class TestModel: ObservableObject {
         scanning = true
         scanResult = nil
         count(true)
+        StatusItemController.shared.show(.scanning)
         Task {
             let outcome = await session.run { [feed] report, buffer in
                 feed.push(buffer)
@@ -84,9 +86,16 @@ final class TestModel: ObservableObject {
             }
             self.session = nil
             self.scanning = false
+            StatusItemController.shared.show(outcome == .cancelled ? .idle : (outcome.isRecognized ? .success : .failure))
             guard outcome != .cancelled else { return }
             self.scanResult = outcome
-            if case .recognized = outcome { Haptics.success() } else { Haptics.failure() }
+            if case .recognized = outcome {
+                Haptics.success()
+                SoundEffects.play(.success)
+            } else {
+                Haptics.failure()
+                SoundEffects.play(.failure)
+            }
             switch outcome {
             case let .recognized(similarity, _): Log.write(String(format: "test scan: recognized (similarity %.2f)", similarity))
             case let .failed(hint): Log.write("test scan: not recognized (\(hint))")
@@ -178,5 +187,12 @@ struct TestView: View {
         case .notRecognized: .red
         default: .yellow
         }
+    }
+}
+
+extension ScanSession.Outcome {
+    var isRecognized: Bool {
+        if case .recognized = self { return true }
+        return false
     }
 }

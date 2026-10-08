@@ -20,15 +20,17 @@ final class UnlockService {
     /// The password was typed for this lock: never type it twice (a wrong password counts as a failed login).
     private var typed = false
     private var timer: Timer?
-    /// The island over the lock screen: the Face ID glyph while scanning (where macOS lets it show there).
+    /// The island over the lock screen: the Face ID glyph scanning, then the green ring or the head shake.
     private let island = Island.lockScreen
-    /// The face was recognized and the password typed: the approval plays as soon as the screen unlocks.
+    /// When the face was recognized: the approval finishes as soon as the screen unlocks.
     private var approvedAt: Date?
 
     /// Input in the first seconds after locking does not start a scan.
     static let grace: TimeInterval = 4
     static let scanTimeout: TimeInterval = 6
     static let maxAttempts = 5
+    /// How long Face ID's approval (the green ring and the checkmark) stays before going back into the notch.
+    static let approvalTime: TimeInterval = 1.6
 
     func start(model: AppModel) {
         self.model = model
@@ -69,14 +71,41 @@ final class UnlockService {
         session = nil
         if lockedAt != nil { Log.write("screen unlocked") }
         lockedAt = nil
-        island.hide()
-        // Unlocked by the face: the green ring and the checkmark come out of the notch over the desktop, like Face
-        // ID's approval on iPhone. (macOS does not show other apps' windows on the lock screen itself.)
-        if let approvedAt, Date().timeIntervalSince(approvedAt) < 8, model?.settings.lockScreenBadge == true {
-            Island.shared.show(.scan(.success, caption: nil))
-            Island.shared.hide(after: 1.6)
+        if let approvedAt, Date().timeIntervalSince(approvedAt) < 8 {
+            playApproval(since: approvedAt)
+        } else {
+            island.hide()
         }
         approvedAt = nil
+        // FaceID started (or was refused by the keychain) on the lock screen: now it may read the keychain, and if the
+        // keychain wants a confirmation, the island asks for it on the desktop.
+        guard let model else { return }
+        if model.secretsDeferred { model.loadSecrets() }
+        if model.keychainNeedsConfirmation {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                MainActor.assumeIsolated {
+                    guard model.keychainNeedsConfirmation, !LockScreen.isLocked, !Island.shared.isShowing else { return }
+                    Setup.next()
+                }
+            }
+        }
+    }
+
+    /// Unlocked by the face: Face ID's approval, as on iPhone, with the success sound. When the island above the lock
+    /// screen already shows the green ring, it stays while the lock screen goes away and then slides back into the
+    /// notch, one movement. When macOS kept the island under the lock screen, the ring comes out of the notch over the
+    /// desktop now.
+    func playApproval(since approvedAt: Date) {
+        SoundEffects.play(.success)
+        StatusItemController.shared.show(.success)
+        if island.aboveLockScreen, case .scan(.success, _)? = island.content {
+            island.hide(after: max(Self.approvalTime - Date().timeIntervalSince(approvedAt), 0.6))
+            return
+        }
+        island.hide()
+        guard model?.settings.lockScreenBadge == true else { return }
+        Island.shared.show(.scan(.success, caption: nil))
+        Island.shared.hide(after: Self.approvalTime)
     }
 
     private func displayWoke() {
@@ -94,6 +123,8 @@ final class UnlockService {
         guard let model, let lockedAt, model.settings.unlockEnabled, model.canUnlock else { return }
         guard LockScreen.isLocked, !LockScreen.displayIsAsleep else { return }
         guard session == nil, !typed, attempts < Self.maxAttempts, Date().timeIntervalSince(lastScanEnded) > 1.5 else { return }
+        // A new version is going in and FaceID is about to restart: no scan that the restart would cut off.
+        guard !UpdateCenter.shared.isInstalling else { return }
         let lastInput = Date(timeIntervalSinceNow: -LockScreen.secondsSinceInput)
         let woke = displayWokeAt.map { $0 > lastScanEnded } ?? false
         let touched = lastInput > lockedAt.addingTimeInterval(Self.grace) && lastInput > lastScanEnded
@@ -108,24 +139,36 @@ final class UnlockService {
         self.session = session
         model.scanStarted()
         showIsland(.scanning, model: model)
-        Log.write("lock screen: scanning (attempt \(attempts))")
+        StatusItemController.shared.show(.scanning)
+        Log.write("lock screen: scanning (attempt \(attempts))" + (island.aboveLockScreen ? " · island above the lock screen" : ""))
         Task {
             let outcome = await session.run()
             model.scanEnded()
             guard self.session === session else { return }
             self.session = nil
             self.lastScanEnded = Date()
+            // The menu bar is hidden on the lock screen: its checkmark comes with the approval after unlocking.
+            StatusItemController.shared.show(outcome.isFailure ? .failure : .idle)
             switch outcome {
             case let .recognized(similarity, embedding):
                 Log.write(String(format: "lock screen: recognized (similarity %.2f)", similarity))
                 model.learn(embedding, similarity: similarity)
                 Haptics.success()
-                island.hide()
                 approvedAt = Date()
+                if island.aboveLockScreen {
+                    // Seen on the lock screen itself: the glyph turns into the green ring now and stays until the
+                    // screen unlocks (`playApproval`).
+                    showIsland(.success, model: model)
+                } else {
+                    island.hide()
+                }
                 await typePassword(model: model)
+                // Still locked (the user was typing, the password did not work): the approval ends here.
+                if LockScreen.isLocked { island.hide() }
             case let .failed(hint):
                 Log.write("lock screen: not unlocked (\(hint))")
                 Haptics.failure()
+                SoundEffects.play(.failure)
                 showIsland(.failure, model: model)
                 island.hide(after: 1.1)
             case let .cameraError(message):
@@ -143,9 +186,12 @@ final class UnlockService {
     }
 
     private func typePassword(model: AppModel) async {
+        // Read silently: the keychain never asks on the lock screen. If it wants a confirmation, it is asked for after
+        // the user unlocks.
         guard let password = PasswordStore.load() else {
             approvedAt = nil
-            Log.write("lock screen: no saved password")
+            Log.write("lock screen: the keychain gave no password (none saved, or it needs a confirmation)")
+            model.keychainRefused()
             return
         }
         // Let the person finish a key press (the key that woke the screen); someone typing the password
@@ -190,5 +236,13 @@ final class UnlockService {
         let source = CGEventSource(stateID: .hidSystemState)
         CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true)?.post(tap: .cghidEventTap)
         CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)?.post(tap: .cghidEventTap)
+    }
+}
+
+extension ScanSession.Outcome {
+    /// The face was seen and not recognized (not a camera error or a cancelled scan).
+    var isFailure: Bool {
+        if case .failed = self { return true }
+        return false
     }
 }

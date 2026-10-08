@@ -21,6 +21,11 @@ final class AppModel: ObservableObject {
     @Published var passwordProblem = false
     /// Scans running now (the auto-lock camera pauses for them).
     @Published private(set) var activeScans = 0
+    /// The keychain wants the user's confirmation before FaceID may read its face and password: FaceID was updated or
+    /// signed differently. Until then FaceID does not unlock; `confirmKeychain()` asks while the screen is unlocked.
+    @Published private(set) var keychainNeedsConfirmation = false
+    /// FaceID started on the lock screen and has not read the keychain yet (it waits until the screen is unlocked).
+    private(set) var secretsDeferred = false
 
     let unlock = UnlockService()
     let presence = PresenceService()
@@ -29,17 +34,64 @@ final class AppModel: ObservableObject {
 
     var isEnrolled: Bool { enrollment != nil }
 
-    /// Everything the lock screen needs: a face, the password and permission to type it.
-    var canUnlock: Bool { isEnrolled && passwordSaved && accessibilityTrusted && cameraStatus == .authorized }
+    /// Everything the lock screen needs: a face, the password, permission to type it, and a keychain that lets FaceID read
+    /// them without asking.
+    var canUnlock: Bool {
+        isEnrolled && passwordSaved && accessibilityTrusted && cameraStatus == .authorized && !keychainNeedsConfirmation
+    }
 
     func start() {
-        enrollment = FaceStore.load()
-        passwordSaved = PasswordStore.exists
+        loadSecrets()
         refresh()
-        if isEnrolled { FaceEngine.preload() }
         unlock.start(model: self)
         presence.start(model: self)
-        Log.write("FaceID started · face: \(isEnrolled) · password: \(passwordSaved) · accessibility: \(accessibilityTrusted)")
+        Log.write("FaceID started · face: \(isEnrolled) · password: \(passwordSaved) · accessibility: \(accessibilityTrusted)"
+            + (keychainNeedsConfirmation ? " · the keychain needs a confirmation" : secretsDeferred ? " · keychain after unlocking" : ""))
+    }
+
+    /// Reads the faces without ever letting the keychain ask. On the lock screen it does not even try: after an update the
+    /// keychain may want a confirmation, and that is asked only once the screen is unlocked.
+    func loadSecrets() {
+        guard !LockScreen.isLocked else {
+            secretsDeferred = true
+            return
+        }
+        secretsDeferred = false
+        switch KeychainAccess.check() {
+        case .empty:
+            enrollment = nil
+            keychainNeedsConfirmation = false
+        case .granted:
+            enrollment = FaceStore.load()
+            keychainNeedsConfirmation = false
+        case .needsConfirmation:
+            enrollment = nil
+            keychainNeedsConfirmation = true
+        }
+        passwordSaved = PasswordStore.exists
+        if isEnrolled { FaceEngine.preload() }
+    }
+
+    /// The keychain's own prompts (see `KeychainAccess.confirm`), off the main thread so that the island stays alive while
+    /// one is up. Only while the screen is unlocked.
+    func confirmKeychain() async -> KeychainAccess.Confirmation {
+        guard !LockScreen.isLocked else { return .denied }
+        let result = await Task.detached { KeychainAccess.confirm() }.value
+        Log.write("keychain: confirmation \(result)")
+        loadSecrets()
+        return keychainNeedsConfirmation && result == .granted ? .denied : result
+    }
+
+    /// The keychain turned FaceID away where it should not have (the lock screen, a save): it is checked again, on the
+    /// lock screen only once the screen is unlocked.
+    func keychainRefused() {
+        guard !keychainNeedsConfirmation else { return }
+        if LockScreen.isLocked {
+            secretsDeferred = true
+        } else if KeychainAccess.check() == .needsConfirmation {
+            keychainNeedsConfirmation = true
+            Log.write("keychain: needs a confirmation")
+        }
     }
 
     /// Permissions can change outside the app; checked when the controls open.
@@ -55,6 +107,7 @@ final class AppModel: ObservableObject {
     func save(_ enrollment: Enrollment) {
         guard FaceStore.save(enrollment) else {
             show(L("Не удалось сохранить лицо в Связке ключей"))
+            keychainRefused()
             return
         }
         self.enrollment = enrollment
@@ -135,17 +188,49 @@ final class AppModel: ObservableObject {
 
     // MARK: - Permissions
 
+    // macOS keeps the camera and Accessibility permissions by the app's signature. A record made for a build signed
+    // differently stays in System Settings, but it no longer counts, its switch does nothing, and macOS does not ask
+    // again while it is there. So when a permission is missing, the request first resets FaceID's record, and macOS's own
+    // prompt makes a new one for this build: for Accessibility a new FaceID row, switched off, so the user only turns it
+    // on. `PermissionWatcher` notices and goes on with the setup.
+
     func requestCamera() {
         Task {
-            _ = await Camera.requestAccess()
-            refresh()
+            await askForCamera()
             if cameraStatus == .denied { openPrivacySettings("Privacy_Camera") }
         }
     }
 
+    /// macOS's camera prompt, after resetting a record left by another build.
+    func askForCamera() async {
+        if !Camera.isAuthorized { await Self.resetPermission("Camera") }
+        _ = await Camera.requestAccess()
+        refresh()
+    }
+
     func requestAccessibility() {
-        LockScreen.requestAccessibility()
-        openPrivacySettings("Privacy_Accessibility")
+        Task {
+            if !LockScreen.canType { await Self.resetPermission("Accessibility") }
+            LockScreen.requestAccessibility()
+            openPrivacySettings("Privacy_Accessibility")
+        }
+    }
+
+    /// `tccutil reset <service> <bundle id>`: forgets FaceID's record for the permission, whichever build it was made for
+    /// (no admin rights needed). Only the app has a bundle id; a build run straight from the package has none.
+    private static func resetPermission(_ service: String) async {
+        guard Bundle.main.bundleURL.pathExtension == "app", let id = Bundle.main.bundleIdentifier else { return }
+        let status = await Task.detached { () -> Int32 in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            process.arguments = ["reset", service, id]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            guard (try? process.run()) != nil else { return -1 }
+            process.waitUntilExit()
+            return process.terminationStatus
+        }.value
+        Log.write("permissions: \(service) record reset before asking" + (status == 0 ? "" : " (tccutil failed: \(status))"))
     }
 
     func openPrivacySettings(_ anchor: String) {

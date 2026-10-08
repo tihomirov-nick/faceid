@@ -9,7 +9,8 @@ import SwiftUI
 final class Island: ObservableObject {
     /// The island over the desktop.
     static let shared = Island(lockScreen: false)
-    /// The island over the lock screen (a separate window above it; shows only the scan, where macOS allows it).
+    /// The island over the lock screen: only the scan, in a window of its own above the lock screen (`LockScreenSpace`)
+    /// that never takes clicks or keys.
     static let lockScreen = Island(lockScreen: true)
 
     enum Content {
@@ -25,6 +26,11 @@ final class Island: ObservableObject {
         case faces
         case password(PasswordModel)
         case access
+        case camera
+        /// The keychain wants the user's confirmation before FaceID may read the face and the password again.
+        case keychain
+        /// A new version of FaceID, its download and install.
+        case update
         /// Setup finished.
         case ready
 
@@ -40,13 +46,16 @@ final class Island: ObservableObject {
             case .access: 8
             case .ready: 9
             case .faces: 10
+            case .keychain: 11
+            case .camera: 12
+            case .update: 13
             }
         }
 
         /// Plain values rather than a model object.
         var isValue: Bool {
             switch self {
-            case .scan, .countdown, .home, .more, .faces, .access, .ready: true
+            case .scan, .countdown, .home, .more, .faces, .access, .camera, .keychain, .update, .ready: true
             case .enroll, .test, .password: false
             }
         }
@@ -54,15 +63,22 @@ final class Island: ObservableObject {
         /// Takes clicks and keys (buttons inside).
         var interactive: Bool {
             switch self {
-            case .enroll, .test, .home, .more, .faces, .password, .access: true
+            case .enroll, .test, .home, .more, .faces, .password, .access, .camera, .keychain, .update: true
             case .scan, .countdown, .ready: false
             }
+        }
+
+        /// Takes the keyboard as it comes out. An update offer comes by itself, so it waits for a click: the app in front
+        /// keeps the keys meanwhile.
+        var takesKeyboard: Bool {
+            if case .update = self { return false }
+            return interactive
         }
 
         /// Closes when the user clicks elsewhere, as the Dynamic Island does.
         var closesOnOutsideClick: Bool {
             switch self {
-            case .home, .more, .faces, .test, .password, .access: true
+            case .home, .more, .faces, .test, .password, .access, .camera, .keychain, .update: true
             default: false
             }
         }
@@ -75,6 +91,9 @@ final class Island: ObservableObject {
     @Published private(set) var revision = 0
 
     let isLockScreen: Bool
+    /// The island over the lock screen is in the space above it, so macOS shows it there (and over everything after
+    /// unlocking, until it goes back into the notch).
+    private(set) var aboveLockScreen = false
     /// Heights the contents turned out to need, by content kind (measured each time they lay out).
     @Published private(set) var measuredHeights: [Int: CGFloat] = [:]
     /// The same space under every content.
@@ -113,8 +132,9 @@ final class Island: ObservableObject {
             panel.setFrame(NSRect(x: screen.frame.midX - frameSize.width / 2, y: screen.frame.maxY - frameSize.height,
                                   width: frameSize.width, height: frameSize.height), display: false)
         }
-        panel.interactive = content.interactive
-        panel.ignoresMouseEvents = !content.interactive
+        // The island over the lock screen lets every click and key through to the password field below.
+        panel.interactive = content.interactive && !isLockScreen
+        panel.ignoresMouseEvents = !panel.interactive
         self.geometry = geometry
         // After the content below has changed (both run when show returns).
         defer {
@@ -125,10 +145,13 @@ final class Island: ObservableObject {
             expanded = false
             self.content = content
             revision += 1
-            if content.interactive {
+            if panel.interactive && content.takesKeyboard {
                 panel.makeKeyAndOrderFront(nil)
             } else {
                 panel.orderFrontRegardless()
+            }
+            if isLockScreen {
+                aboveLockScreen = LockScreenSpace.shared?.adopt(panel) ?? false
             }
             DispatchQueue.main.async {
                 withAnimation(IslandGeometry.spring) { self.expanded = true }
@@ -142,7 +165,7 @@ final class Island: ObservableObject {
                 if !keep { self.revision += 1 }
                 self.expanded = true
             }
-            if content.interactive { panel.makeKey() }
+            if panel.interactive && content.takesKeyboard { panel.makeKey() }
         }
     }
 
@@ -263,6 +286,11 @@ final class Island: ObservableObject {
                 self.panel?.orderOut(nil)
                 self.content = nil
                 self.updateClickMonitors()
+                if self.isLockScreen {
+                    // No empty layer is left above the lock screen or the desktop.
+                    LockScreenSpace.shared?.remove()
+                    self.aboveLockScreen = false
+                }
             }
         }
         hideWork = work
@@ -293,7 +321,7 @@ final class Island: ObservableObject {
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         if isLockScreen {
-            // Above the lock screen: macOS shows windows marked this way while the screen is locked.
+            // Allowed while the screen is locked; the space above the lock screen (`LockScreenSpace`) makes it seen there.
             panel.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 1)
             panel.canBecomeVisibleWithoutLogin = true
         } else {
@@ -378,12 +406,14 @@ struct IslandGeometry: Equatable {
         case .test: return CGSize(width: 360, height: top + 258)
         case .countdown: return CGSize(width: max(notchWidth + 60, 240), height: top + 50)
         case .home: return home
-        case .more: return CGSize(width: 390, height: top + 269)
+        case .more: return CGSize(width: 390, height: top + 377)
         case .faces:
             let count = AppModel.shared.enrollment?.faces.count ?? 1
             return CGSize(width: 360, height: top + 88 + CGFloat(count) * 41)
         case .password: return CGSize(width: 300, height: top + 98)
-        case .access: return CGSize(width: 250, height: top + 96)
+        case .access, .camera: return CGSize(width: 250, height: top + 96)
+        case .keychain: return CGSize(width: 330, height: top + 116)
+        case .update: return CGSize(width: 340, height: top + 132)
         case .ready: return CGSize(width: max(notchWidth + 10, 190), height: top + 86)
         }
     }
@@ -522,7 +552,13 @@ struct IslandContentView: View {
         case let .password(model):
             PasswordPage(model: model)
         case .access:
-            AccessPage()
+            PermissionPage(kind: .accessibility)
+        case .camera:
+            PermissionPage(kind: .camera)
+        case .keychain:
+            KeychainPage()
+        case .update:
+            UpdatePage()
         case .ready:
             FaceIDGlyph(phase: .success, size: 58)
                 .padding(.top, 14)

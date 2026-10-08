@@ -81,7 +81,7 @@ public enum ScanHint: Int, Sendable, Comparable {
         case .lookAtScreen: L("Посмотрите на экран")
         case .openEyes: L("Откройте глаза")
         case .blink: L("Моргните")
-        case .checking: L("Проверка…")
+        case .checking: L("Проверяю…")
         case .recognized: L("Лицо распознано")
         }
     }

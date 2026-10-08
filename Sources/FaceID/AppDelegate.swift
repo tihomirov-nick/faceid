@@ -9,14 +9,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated {
             AppModel.shared.start()
-            statusItem = StatusItemController()
+            UpdateCenter.shared.start()
+            statusItem = StatusItemController.shared
             let hotspot = NotchHotspot()
             hotspot.install()
             self.hotspot = hotspot
-            // Not set up yet, or opened by hand (not at login): the island comes out with the controls.
-            if !AppModel.shared.isEnrolled || !Self.launchedAtLogin {
+            // Not set up yet, or opened by hand (not at login): the island comes out with the controls. A scripted debug
+            // run opens only what its actions ask for (the controls would take the keyboard from the app in front).
+            #if DEBUG
+            let scripted = ProcessInfo.processInfo.environment["FACEID_ACTIONS"] != nil
+            #else
+            let scripted = false
+            #endif
+            if !scripted, !AppModel.shared.isEnrolled || !Self.launchedAtLogin {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    MainActor.assumeIsolated { Island.shared.show(.home) }
+                    MainActor.assumeIsolated {
+                        // Updated or signed differently: the setup goes on where it stopped, with the keychain's
+                        // confirmation first, then a permission macOS forgot.
+                        let model = AppModel.shared
+                        let permissionMissing = model.cameraStatus != .authorized || !model.accessibilityTrusted
+                        if model.keychainNeedsConfirmation || (model.isEnrolled && model.passwordSaved && permissionMissing) {
+                            Setup.next()
+                        } else {
+                            Island.shared.show(.home)
+                        }
+                    }
                 }
             }
         }
@@ -53,5 +70,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    /// The updater relaunches FaceID by quitting it; that waits while the screen is locked or a face is being scanned.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated { UpdateCenter.shared.terminationReply() }
     }
 }

@@ -91,3 +91,29 @@ final class EnrollmentTests: XCTestCase {
         XCTAssertEqual(enrollment.version, 2)
     }
 }
+
+final class SecretRecordTests: XCTestCase {
+    func testThePlainAttributeSaysWhatTheItemHolds() {
+        let both = SecretStore.Record(face: Data([1, 2]), password: "x")
+        XCTAssertEqual(String(decoding: both.contents, as: UTF8.self), "face,password")
+        XCTAssertTrue(SecretStore.Record.holds("face", in: both.contents))
+        XCTAssertTrue(SecretStore.Record.holds("password", in: both.contents))
+
+        let face = SecretStore.Record(face: Data([1]), password: nil)
+        XCTAssertTrue(SecretStore.Record.holds("face", in: face.contents))
+        XCTAssertFalse(SecretStore.Record.holds("password", in: face.contents))
+
+        XCTAssertTrue(SecretStore.Record().isEmpty)
+        XCTAssertFalse(SecretStore.Record.holds("face", in: nil))
+        // "face" must not be found inside another word.
+        XCTAssertFalse(SecretStore.Record.holds("face", in: Data("faces".utf8)))
+    }
+
+    func testTheRecordSurvivesEncoding() throws {
+        let record = SecretStore.Record(face: Data(repeating: 7, count: 300), password: "пароль с пробелом")
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
+        let decoded = try PropertyListDecoder().decode(SecretStore.Record.self, from: encoder.encode(record))
+        XCTAssertEqual(decoded, record)
+    }
+}
