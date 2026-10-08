@@ -14,10 +14,6 @@ struct AppButtonStyle: ButtonStyle {
         case secondary
         /// Deleting: a red-tinted capsule.
         case destructive
-        /// A green word in a list, like the actions in iPhone Settings.
-        case link
-        /// A red word in a list ("Reset FaceID").
-        case destructiveLink
     }
 
     var kind: Kind
@@ -42,26 +38,20 @@ private struct AppButtonBody: View {
             .font(.system(size: fontSize, weight: kind == .primary ? .semibold : .medium))
             .foregroundStyle(foreground)
             .lineLimit(1)
-            .padding(.horizontal, isLink ? 0 : padding.h)
-            .padding(.vertical, isLink ? 2 : padding.v)
-            .frame(minWidth: controlSize == .large && !isLink ? 104 : nil)
-            .background {
-                if !isLink {
-                    Capsule().fill(background(pressed: pressed))
-                }
-            }
+            .padding(.horizontal, padding.h)
+            .padding(.vertical, padding.v)
+            .frame(minWidth: controlSize == .large ? 104 : nil)
+            .background { Capsule().fill(background(pressed: pressed)) }
             .contentShape(Capsule())
-            .scaleEffect(pressed && !reduceMotion ? 0.92 : (hovering && !isLink && !reduceMotion ? 1.03 : 1))
+            .scaleEffect(pressed && !reduceMotion ? 0.92 : (hovering && !reduceMotion ? 1.03 : 1))
             .brightness(pressed && kind == .primary ? -0.06 : 0)
-            .opacity(isEnabled ? (isLink && (hovering || pressed) ? 0.7 : 1) : 0.4)
+            .opacity(isEnabled ? 1 : 0.4)
             // In quickly, back out with a little bounce, like iOS buttons.
             .animation(pressed ? .spring(response: 0.18, dampingFraction: 0.8) : .spring(response: 0.35, dampingFraction: 0.5),
                        value: pressed)
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: hovering)
             .onHover { hovering = $0 }
     }
-
-    private var isLink: Bool { kind == .link || kind == .destructiveLink }
 
     private var fontSize: CGFloat {
         switch controlSize {
@@ -83,8 +73,7 @@ private struct AppButtonBody: View {
         switch kind {
         case .primary: .white
         case .secondary: .primary
-        case .destructive, .destructiveLink: .red
-        case .link: Brand.green
+        case .destructive: .red
         }
     }
 
@@ -98,8 +87,6 @@ private struct AppButtonBody: View {
             return base.opacity(pressed ? (dark ? 0.24 : 0.14) : (hovering ? (dark ? 0.2 : 0.1) : (dark ? 0.14 : 0.06)))
         case .destructive:
             return Color.red.opacity(pressed ? 0.26 : (hovering ? 0.2 : 0.14))
-        case .link, .destructiveLink:
-            return .clear
         }
     }
 }

@@ -165,18 +165,6 @@ enum DebugHooks {
                 }
             }
         case "lock-hide": Island.lockScreen.hide()
-        case "lock-cover":
-            // A red window above the lock screen island's own window level, in the ordinary space: the island, in its
-            // space, still shows above it.
-            guard let screen = Island.targetScreen() else { break }
-            let cover = NSPanel(contentRect: NSRect(x: screen.frame.midX - 180, y: screen.frame.maxY - 170, width: 360, height: 170),
-                                styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-            cover.backgroundColor = .systemRed
-            cover.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 5)
-            cover.ignoresMouseEvents = true
-            cover.collectionBehavior = [.canJoinAllSpaces, .stationary]
-            cover.orderFrontRegardless()
-            self.cover = cover
         case "lock-check":
             // What the lock screen island could disturb: the focused app, secure input, the key window, clicks.
             Log.write("lock check: above the lock screen \(Island.lockScreen.aboveLockScreen) · space "
@@ -184,43 +172,12 @@ enum DebugHooks {
                 + "\(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0) · FaceID \(getpid()) active \(NSApp.isActive) · "
                 + "key window \(NSApp.keyWindow.map { "\($0.windowNumber)" } ?? "-") · a click on the island goes to \(clickTarget())")
         case "setup": Setup.next()
-        case "permission-request":
-            // permission-request=accessibility|camera: as the "Allow" button of the setup's permission step
-            if value == "camera" { AppModel.shared.requestCamera() } else { AppModel.shared.requestAccessibility() }
-        case "permission-status":
-            // The permissions as FaceID sees them, to the log
-            Log.write("permissions: camera \(Camera.authorizationStatus.rawValue) (3 granted, 2 denied, 0 not asked) · accessibility \(LockScreen.canType)")
-        case "keychain-seed-legacy":
-            // FaceID 1.0's two items with made-up contents, in the development build's own keychain items
-            let face = Enrollment(face: Enrollment.firstName, templates: [
-                Enrollment.Template(vector: FaceMatcher.normalized((0..<128).map { _ in Float.random(in: -1...1) }), yaw: 0, pitch: 0, appearance: 0),
-            ], openEyes: 0.25)
-            let encoder = PropertyListEncoder()
-            encoder.outputFormat = .binary
-            if let data = try? encoder.encode(face) { KeychainDebug.seedLegacy(face: data) }
-            Log.write("keychain: seeded the old items · \(KeychainDebug.report)")
-        case "keychain-check":
-            // Silently, as at launch: what the keychain lets this build do
-            Log.write("keychain check: \(KeychainAccess.check()) · \(KeychainDebug.report)")
-        case "keychain-load":
-            AppModel.shared.loadSecrets()
-            Log.write("keychain load: face \(AppModel.shared.isEnrolled) · needs a confirmation \(AppModel.shared.keychainNeedsConfirmation)")
-        case "keychain-password":
-            // Silently, as on the lock screen: whether the password comes (never the password itself)
-            Log.write("keychain password: \(PasswordStore.load() == nil ? "none" : "present")")
-        case "keychain-move":
-            Log.write("keychain move: \(KeychainDebug.moveSilently()) · \(KeychainDebug.report)")
-        case "keychain-wipe":
-            Log.write("keychain wipe: \(KeychainDebug.wipe())")
         case "update-demo":
             // update-demo=available|downloading|installing|failed|cannot|offline|checking|uptodate|off: the update
             // interface in that state (nothing is downloaded)
             UpdateCenter.preview = Self.updateState(value)
             UpdateCenter.shared.updater.objectWillChange.send()
             if value != "off", Island.shared.content?.kind != Island.Content.update.kind { Island.shared.show(.update) }
-        case "update-check-menu":
-            // As "Check for Updates…" in the menu bar icon's menu (asks GitHub for real)
-            UpdateCenter.shared.checkFromMenu()
         case "update-state":
             // update-state=<as update-demo>: only the state, for the settings row
             UpdateCenter.preview = Self.updateState(value)
@@ -233,7 +190,7 @@ enum DebugHooks {
             let moment: MenuBarIcon.Moment = value == "scanning" ? .scanning : value == "success" ? .success : value == "failure" ? .failure : .idle
             StatusItemController.shared.show(moment)
         case "sound":
-            // sound=success|failure|start|tick|delete|sent
+            // sound=success|failure|start|tick|delete
             if let event = SoundEffects.Event.allCases.first(where: { "\($0)" == value }) { SoundEffects.play(event) }
         case "sounds":
             // Every sound, 1.6 s apart.
@@ -281,9 +238,6 @@ enum DebugHooks {
         default: break
         }
     }
-
-    /// The red window of "lock-cover".
-    private static var cover: NSPanel?
 
     private static func updateState(_ name: String) -> Updater.State? {
         let release = Updater.Release(

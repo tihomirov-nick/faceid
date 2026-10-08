@@ -1,8 +1,7 @@
 import CoreGraphics
 
 /// FaceID's face, drawn by its own geometry: four corners, two eyes, a nose and a smile, built from lines and circular
-/// arcs. One drawing serves the whole app: the menu bar icon (`NSImage.faceGlyph()`, the frames of `MenuBarIcon`), the
-/// island's glyph (`FaceMarkView`) and the mark of the app icon (`scripts/make_icon_face.swift` writes it into
+/// arcs. One drawing serves the whole app: the menu bar icon and its frames (`MenuBarIcon`), the island's glyph (`FaceMarkView`) and the mark of the app icon (`scripts/make_icon_face.swift` writes it into
 /// Resources/AppIcon.icon). It uses only CoreGraphics: the script compiles this file on its own.
 ///
 /// The geometry is laid out in points on a mark of `side` points, the menu bar's size, y down from its top left corner;

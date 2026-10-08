@@ -2,8 +2,8 @@ import AppKit
 import FaceCore
 
 /// FaceID's icon in the menu bar: FaceID's own face (`FaceMark`, the same drawing as the app icon's mark) as a template
-/// image that takes the menu bar's own color: the 14.34 pt mark on a 16 × 16 pt canvas. At rest it is `NSImage.faceGlyph()`
-/// and no timer runs. It moves only at the moments that matter: while a face is being checked the face dims and a scan
+/// image that takes the menu bar's own color: the 14.34 pt mark on a 16 × 16 pt canvas. At rest it is `image(Frame())` and
+/// no timer runs. It moves only at the moments that matter: while a face is being checked the face dims and a scan
 /// line runs between the corners, when the face is recognized a checkmark draws itself in its place, and when it is not
 /// the face shakes "no" inside the corners. With Reduce Motion the states change at once.
 @MainActor

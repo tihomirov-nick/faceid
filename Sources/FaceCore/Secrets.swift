@@ -346,37 +346,3 @@ public enum OwnerCheck {
         }
     }
 }
-
-#if DEBUG
-/// Debug hooks only. A development build has keychain items of its own (`AppPaths.keychainPrefix` ends with ".debug"),
-/// so these never touch the installed app's face or password.
-public enum KeychainDebug {
-    /// FaceID 1.0's two items with made-up contents (the "password" is not a password).
-    public static func seedLegacy(face: Data) {
-        Keychain.write(face, service: LegacyItems.face, account: LegacyItems.account, label: "FaceID Debug — old face item")
-        Keychain.write(Data("debug-not-a-password".utf8), service: LegacyItems.password, account: LegacyItems.account,
-                       label: "FaceID Debug — old password item")
-    }
-
-    /// FaceID 1.0's items into the shared one, as `KeychainAccess.confirm` does after the user allowed it, but only where
-    /// this build may read them without asking.
-    public static func moveSilently() -> String {
-        guard SecretStore.usesLegacyItems else { return "nothing to move" }
-        guard case let .success(record) = LegacyItems.read(interactive: false) else { return "the old items need a confirmation" }
-        return LegacyItems.move(record) ? "moved" : "not moved"
-    }
-
-    /// Deletes this build's items where the keychain allows it; says which went.
-    public static func wipe() -> String {
-        [SecretStore.service, LegacyItems.face, LegacyItems.password].map { service in
-            "\(service): \(Keychain.exists(service: service, account: NSUserName()) ? (Keychain.delete(service: service, account: NSUserName()) ? "deleted" : "kept (not allowed)") : "none")"
-        }.joined(separator: " · ")
-    }
-
-    /// What is there, from plain attributes only.
-    public static var report: String {
-        "shared item \(SecretStore.exists) (face \(SecretStore.holds("face")), password \(SecretStore.holds("password")))"
-            + " · old items \(LegacyItems.exist) · silent reads \(Keychain.canReadSilently)"
-    }
-}
-#endif

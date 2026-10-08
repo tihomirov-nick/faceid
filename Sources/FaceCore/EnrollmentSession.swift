@@ -56,11 +56,6 @@ public final class EnrollmentSession: @unchecked Sendable {
         /// Head direction relative to straight ahead, in degrees, as it looks in the mirrored preview
         /// (x to the right, y down).
         public var direction: CGPoint?
-        public var fraction: Double {
-            let segments = Double(covered.filter { $0 }.count) / Double(EnrollmentSession.segmentsNeeded)
-            let frontal = Double(self.frontal) / Double(EnrollmentSession.frontalNeeded)
-            return min(1, 0.85 * min(1, segments) + 0.15 * min(1, frontal))
-        }
         public var done: Bool { hint == .done }
 
         public init(pass: Int = 1, covered: [Bool], frontal: Int, hint: Hint, face: DetectedFace?, imageSize: CGSize, direction: CGPoint?) {

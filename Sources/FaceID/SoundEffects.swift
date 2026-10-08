@@ -19,8 +19,6 @@ enum SoundEffects {
         /// A small confirmation: the first circle of the face setup.
         case tick
         case delete
-        /// Saved or sent out of the app (FaceID has no such moment yet).
-        case sent
 
         /// The interface sound, and the alert to play when it is missing.
         fileprivate var sound: (path: String, fallback: NSSound.Name) {
@@ -30,7 +28,6 @@ enum SoundEffects {
             case .start: ("system/begin_record.caf", "Tink")
             case .tick: ("system/head_gestures_partial_nod.caf", "Tink")
             case .delete: ("dock/poof item off dock.aif", "Pop")
-            case .sent: ("system/SentMessage.caf", "Purr")
             }
         }
     }

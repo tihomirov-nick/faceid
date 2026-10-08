@@ -90,8 +90,6 @@ public struct Enrollment: Codable, Sendable, Equatable {
     public static var firstName: String { L("Мое лицо") }
     static var secondName: String { L("Второй вид") }
 
-    public var vectors: [[Float]] { templates.map(\.vector) }
-
     public func shots(of face: Int) -> Int {
         templates.filter { $0.appearance == face }.count
     }

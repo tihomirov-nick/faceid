@@ -184,12 +184,3 @@ enum Haptics {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { performer.perform(.generic, performanceTime: .now) }
     }
 }
-
-// MARK: - Menu bar
-
-extension NSImage {
-    /// FaceID's face (`FaceMark`) as a template image for the menu bar, at rest (see `MenuBarIcon`).
-    static func faceGlyph() -> NSImage {
-        MenuBarIcon.image(.init())
-    }
-}
