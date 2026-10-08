@@ -176,7 +176,7 @@ struct TestView: View {
     private func color(for report: FrameReport) -> Color {
         switch report.hint {
         case .recognized, .checking: .green
-        case .notRecognized, .spoof: .red
+        case .notRecognized: .red
         default: .yellow
         }
     }

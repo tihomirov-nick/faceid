@@ -66,11 +66,6 @@ public enum AppPaths {
         compiledModel("SFace")
     }
 
-    /// The anti-spoofing models (MiniFASNet), see `SpoofDetector`.
-    public static func spoofModelURL(_ name: String) -> URL? {
-        compiledModel(name)
-    }
-
     private static let compileLock = NSLock()
 
     static func compiledModel(_ name: String) -> URL? {

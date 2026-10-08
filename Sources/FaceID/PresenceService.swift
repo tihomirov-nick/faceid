@@ -65,13 +65,12 @@ final class PresenceService {
 
     private func startWatching(enrollment: Enrollment, model: AppModel) {
         guard let engine = try? FaceEngine.shared(), let camera = try? Camera(allowExternal: model.settings.allowExternalCamera) else { return }
-        // Only "is it the owner": no attention or anti-spoofing checks, and a slightly lower bar, since a wrong
-        // "yes" only delays locking.
+        // Only "is it the owner": no attention or blink checks, and a slightly lower bar, since a wrong "yes" only
+        // delays locking.
         var policy = model.settings.policy
         policy.threshold -= 0.05
         policy.requireAttention = false
         policy.requireBlink = false
-        policy.spoofCheck = false
         let scanner = FaceScanner(enrollment: enrollment, policy: policy, engine: engine)
         let threshold = policy.threshold
         var frame = 0

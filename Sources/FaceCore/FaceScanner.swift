@@ -7,7 +7,6 @@ import Foundation
 public final class FaceEngine: @unchecked Sendable {
     public let detector = FaceDetector()
     private let embedder: FaceEmbedder
-    private let spoof: SpoofDetector?
     private let lock = NSLock()
 
     private static let sharedLock = NSLock()
@@ -29,25 +28,10 @@ public final class FaceEngine: @unchecked Sendable {
 
     private init() throws {
         embedder = try FaceEmbedder()
-        do {
-            spoof = try SpoofDetector()
-        } catch {
-            // Without the models the photo check cannot pass: scans that require it fail instead of skipping it.
-            spoof = nil
-            Log.write("anti-spoofing models unavailable: \(error.localizedDescription)")
-        }
     }
-
-    public var hasSpoofDetector: Bool { spoof != nil }
 
     public func embedding(of buffer: CVPixelBuffer, points: FivePoints) throws -> [Float] {
         try lock.withLock { try embedder.embedding(of: buffer, points: points) }
-    }
-
-    /// Probability that the face is live rather than a photo or a screen; nil without the anti-spoofing models.
-    public func liveness(of buffer: CVPixelBuffer, face: DetectedFace) -> Double? {
-        guard let spoof else { return nil }
-        return lock.withLock { try? spoof.evaluate(buffer, face: face).real }
     }
 }
 
@@ -61,20 +45,14 @@ public struct ScanPolicy: Codable, Sendable, Equatable {
     public var requiredMatches: Int
     /// Eyes open and the face turned to the screen (a sleeping or turned-away owner does not unlock the Mac).
     public var requireAttention: Bool
-    /// A blink must be seen during the scan (a printed photo cannot blink).
+    /// A blink must be seen during the scan: a photo cannot blink.
     public var requireBlink: Bool
-    /// Anti-spoofing models must consider the face live.
-    public var spoofCheck: Bool
-    public var spoofThreshold: Double
 
-    public init(threshold: Float = 0.55, requiredMatches: Int = 2, requireAttention: Bool = true,
-                requireBlink: Bool = false, spoofCheck: Bool = true, spoofThreshold: Double = 0.5) {
+    public init(threshold: Float = 0.55, requiredMatches: Int = 2, requireAttention: Bool = true, requireBlink: Bool = true) {
         self.threshold = threshold
         self.requiredMatches = requiredMatches
         self.requireAttention = requireAttention
         self.requireBlink = requireBlink
-        self.spoofCheck = spoofCheck
-        self.spoofThreshold = spoofThreshold
     }
 }
 
@@ -87,7 +65,6 @@ public enum ScanHint: Int, Sendable, Comparable {
     case notRecognized
     case lookAtScreen
     case openEyes
-    case spoof
     case blink
     /// Everything matches; waiting for one more frame to confirm.
     case checking
@@ -103,7 +80,6 @@ public enum ScanHint: Int, Sendable, Comparable {
         case .notRecognized: L("Лицо не распознано")
         case .lookAtScreen: L("Посмотрите на экран")
         case .openEyes: L("Откройте глаза")
-        case .spoof: L("Похоже на фото или экран")
         case .blink: L("Моргните")
         case .checking: L("Проверка…")
         case .recognized: L("Лицо распознано")
@@ -117,8 +93,6 @@ public struct FrameReport: Sendable {
     public var face: DetectedFace?
     public var faceCount: Int
     public var similarity: Float?
-    /// Running mean of the anti-spoofing models' answer (nil until measured).
-    public var liveness: Double?
     public var attentive: Bool
     public var blinked: Bool
     public var hint: ScanHint
@@ -134,7 +108,6 @@ public final class FaceScanner {
     public let policy: ScanPolicy
     private let engine: FaceEngine
     private var matchStreak = 0
-    private var livenessHistory: [Double] = []
     private var blink = BlinkTracker()
     /// The furthest state reached, for the message after a failed scan.
     public private(set) var furthest: ScanHint = .noFace
@@ -187,12 +160,6 @@ public final class FaceScanner {
         let matches = similarity >= policy.threshold
         matchStreak = matches ? matchStreak + 1 : 0
 
-        if policy.spoofCheck, let live = engine.liveness(of: buffer, face: face) {
-            livenessHistory.append(live)
-            if livenessHistory.count > 8 { livenessHistory.removeFirst() }
-        }
-        let liveness = livenessHistory.isEmpty ? nil : livenessHistory.reduce(0, +) / Double(livenessHistory.count)
-
         let hint: ScanHint
         if !matches {
             hint = .notRecognized
@@ -200,8 +167,6 @@ public final class FaceScanner {
             hint = .lookAtScreen
         } else if policy.requireAttention && !eyesOpen {
             hint = .openEyes
-        } else if policy.spoofCheck && (!engine.hasSpoofDetector || livenessHistory.count < 3 || (liveness ?? 0) < policy.spoofThreshold) {
-            hint = .spoof
         } else if policy.requireBlink && !blink.seen {
             hint = .blink
         } else if matchStreak < policy.requiredMatches {
@@ -210,16 +175,13 @@ public final class FaceScanner {
             hint = .recognized
         }
         return report(size: size, face: face, count: faces.count, similarity: similarity, attentive: attentive,
-                      liveness: liveness, hint: hint, embedding: embedding)
+                      hint: hint, embedding: embedding)
     }
 
     private func report(size: CGSize, face: DetectedFace?, count: Int, similarity: Float?, attentive: Bool,
-                        liveness: Double? = nil, hint: ScanHint, embedding: [Float]? = nil) -> FrameReport {
-        // A spoof verdict needs a few frames; until then the scan is still "checking", not failing.
-        if hint != .spoof || livenessHistory.count >= 3 || !engine.hasSpoofDetector {
-            furthest = max(furthest, hint)
-        }
-        return FrameReport(imageSize: size, face: face, faceCount: count, similarity: similarity, liveness: liveness,
+                        hint: ScanHint, embedding: [Float]? = nil) -> FrameReport {
+        furthest = max(furthest, hint)
+        return FrameReport(imageSize: size, face: face, faceCount: count, similarity: similarity,
                            attentive: attentive, blinked: blink.seen, hint: hint, embedding: embedding)
     }
 }

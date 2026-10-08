@@ -56,12 +56,10 @@ final class SudoService {
         }
 
         let requester = Requester.find(from: request.pid)
-        let prompt = SudoPrompt(command: request.command, requester: requester,
-                                needsConfirmation: model.settings.sudoNeedsConfirmation)
+        let prompt = SudoPrompt(command: request.command, requester: requester)
         let item = Request(connection: connection, prompt: prompt)
         current = item
         connection.send(SudoProtocol.info(L("FaceID: посмотрите в камеру или нажмите «Пароль» в вырезе")))
-        prompt.onAllow = { [weak self] in self?.finish(item, allowed: true) }
         prompt.onPassword = { [weak self] in self?.finish(item, allowed: false) }
         prompt.onRetry = { [weak self] in self?.scan(item) }
         connection.onHangUp = { [weak self] in
@@ -97,13 +95,9 @@ final class SudoService {
                 Log.write(String(format: "sudo: recognized (similarity %.2f)", similarity))
                 model.learn(embedding, similarity: similarity)
                 Haptics.success()
-                if item.prompt.needsConfirmation {
-                    item.prompt.state.phase = .recognized
-                } else {
-                    item.prompt.state.phase = .allowed
-                    try? await Task.sleep(for: .milliseconds(450))
-                    finish(item, allowed: true)
-                }
+                item.prompt.state.phase = .allowed
+                try? await Task.sleep(for: .milliseconds(450))
+                finish(item, allowed: true)
             case let .failed(hint):
                 Log.write("sudo: not recognized (\(hint))")
                 Haptics.failure()
@@ -324,7 +318,6 @@ final class SudoConnection: @unchecked Sendable {
 final class SudoPrompt {
     enum Phase: Equatable {
         case scanning
-        case recognized
         case allowed
         case failed(String)
     }
@@ -336,15 +329,12 @@ final class SudoPrompt {
     let state = State()
     let command: String
     let requester: Requester?
-    let needsConfirmation: Bool
-    var onAllow: () -> Void = {}
     var onPassword: () -> Void = {}
     var onRetry: () -> Void = {}
 
-    init(command: String, requester: Requester?, needsConfirmation: Bool) {
+    init(command: String, requester: Requester?) {
         self.command = command
         self.requester = requester
-        self.needsConfirmation = needsConfirmation
     }
 
     func show() {
@@ -358,7 +348,8 @@ final class SudoPrompt {
     }
 }
 
-/// The request: who asks and the exact command, the Face ID glyph, two buttons.
+/// The request: who asks and the exact command, the Face ID glyph, "Password" and, after a failed scan, "Try Again".
+/// A recognized face lets the command run at once.
 struct SudoPromptView: View {
     let prompt: SudoPrompt
     @ObservedObject var state: SudoPrompt.State
@@ -384,11 +375,6 @@ struct SudoPromptView: View {
                         Button(L("Еще раз")) { prompt.onRetry() }
                             .keyboardShortcut(.defaultAction)
                             .appButton(.primary)
-                    } else if prompt.needsConfirmation {
-                        Button(L("Разрешить")) { prompt.onAllow() }
-                            .keyboardShortcut(.defaultAction)
-                            .appButton(.primary)
-                            .disabled(state.phase != .recognized)
                     }
                 }
                 .controlSize(.small)
@@ -404,7 +390,7 @@ struct SudoPromptView: View {
     private var glyph: GlyphPhase {
         switch state.phase {
         case .scanning: .scanning
-        case .recognized, .allowed: .success
+        case .allowed: .success
         case .failed: .failure
         }
     }

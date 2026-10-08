@@ -8,7 +8,6 @@ import UniformTypeIdentifiers
 // Command line tool for checking recognition on photos without the UI:
 //   faceid-cli compare <photo> <photo>…          similarity of the first face in each photo to the first photo
 //   faceid-cli align <photo> <out.png>           the aligned 112×112 face the model sees
-//   faceid-cli spoof <photo>…                    anti-spoofing score of each photo
 //   faceid-cli embed <list.txt> <out.f32> [--center]
 //                                                embeddings of photos listed one per line (128 float32 each,
 //                                                zeros when no face was found); --center takes the face nearest
@@ -33,7 +32,7 @@ func flag(_ name: String) -> Bool {
     return true
 }
 
-let usage = "usage: faceid-cli compare|align|spoof|embed|landmarks … (see Sources/FaceIDCLI/main.swift)"
+let usage = "usage: faceid-cli compare|align|embed|landmarks … (see Sources/FaceIDCLI/main.swift)"
 let center = flag("--center")
 guard let command = arguments.first else { fail(usage) }
 arguments.removeFirst()
@@ -104,19 +103,6 @@ case "align":
     CGImageDestinationFinalize(destination)
     log(String(format: "eye distance %.0f px · yaw %@ · pitch %@ · roll %@ · eyes %.2f",
                face.points.eyeDistance, "\(face.yaw ?? .nan)", "\(face.pitch ?? .nan)", "\(face.roll ?? .nan)", face.eyeOpenness))
-
-case "spoof":
-    guard !arguments.isEmpty else { fail(usage) }
-    let spoof: SpoofDetector
-    do { spoof = try SpoofDetector() } catch { fail("error: \(error.localizedDescription)") }
-    for path in arguments {
-        guard let (buffer, face) = face(in: path) else {
-            print("\(path)\tno face")
-            continue
-        }
-        let result = try spoof.evaluate(buffer, face: face)
-        print(String(format: "%@\treal %.3f", path, result.real))
-    }
 
 case "embed":
     guard arguments.count == 2 else { fail(usage) }

@@ -13,7 +13,7 @@ BUNDLE_ID="${BUNDLE_ID:-com.faceid.app}"
 VERSION="${VERSION:-1.0.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
 APP="$ROOT/build/$APP_NAME.app"
-MODELS=(SFace MiniFASNetV2 MiniFASNetV1SE)
+MODELS=(SFace)
 
 # Signing. macOS remembers the camera and Accessibility permissions, the keychain items and the sudo module's trust
 # by the app's signature. An ad-hoc signature changes with every build, so each rebuild would need the permissions
@@ -60,7 +60,7 @@ for model in "${MODELS[@]}"; do
     [ -d "$APP/Contents/Resources/$model.mlmodelc" ] || { echo "$model: compilation failed"; exit 1; }
 done
 cp "$ROOT/build/pam_faceid.so" "$APP/Contents/Resources/"
-cp Resources/LICENSE-sface.txt Resources/LICENSE-minifasnet.txt "$APP/Contents/Resources/"
+cp Resources/LICENSE-sface.txt "$APP/Contents/Resources/"
 
 # Icon: Liquid Glass icon made in the Icon Composer format (Resources/AppIcon.icon). actool turns it into
 # Assets.car (layered glass icon for macOS 26+, flat images for older systems) and AppIcon.icns.
@@ -77,13 +77,13 @@ cat > "$APP/Contents/Resources/en.lproj/InfoPlist.strings" <<STRINGS
 CFBundleDisplayName = "$APP_NAME";
 CFBundleName = "$APP_NAME";
 NSCameraUsageDescription = "FaceID recognizes your face with the camera to unlock the Mac and confirm sudo. Images never leave the Mac and are not saved";
-NSHumanReadableCopyright = "FaceID — unlock your Mac with your face. Recognition: SFace (OpenCV Zoo), anti-spoofing: Silent-Face-Anti-Spoofing (Apache 2.0)";
+NSHumanReadableCopyright = "FaceID — unlock your Mac with your face. Recognition: SFace (OpenCV Zoo, Apache 2.0)";
 STRINGS
 cat > "$APP/Contents/Resources/ru.lproj/InfoPlist.strings" <<STRINGS
 CFBundleDisplayName = "$APP_NAME";
 CFBundleName = "$APP_NAME";
 NSCameraUsageDescription = "FaceID узнает ваше лицо камерой, чтобы разблокировать Mac и подтверждать sudo. Изображения не покидают Mac и не сохраняются";
-NSHumanReadableCopyright = "FaceID — разблокировка Mac лицом. Распознавание: SFace (OpenCV Zoo), защита от фото: Silent-Face-Anti-Spoofing (Apache 2.0)";
+NSHumanReadableCopyright = "FaceID — разблокировка Mac лицом. Распознавание: SFace (OpenCV Zoo, Apache 2.0)";
 STRINGS
 
 cat > "$APP/Contents/Info.plist" <<PLIST
@@ -110,7 +110,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>NSCameraUsageDescription</key><string>FaceID recognizes your face with the camera to unlock the Mac and confirm sudo. Images never leave the Mac and are not saved</string>
     <key>NSCameraReactionEffectGesturesEnabledDefault</key><false/>
-    <key>NSHumanReadableCopyright</key><string>FaceID — unlock your Mac with your face. Recognition: SFace (OpenCV Zoo), anti-spoofing: Silent-Face-Anti-Spoofing (Apache 2.0)</string>
+    <key>NSHumanReadableCopyright</key><string>FaceID — unlock your Mac with your face. Recognition: SFace (OpenCV Zoo, Apache 2.0)</string>
 </dict>
 </plist>
 PLIST

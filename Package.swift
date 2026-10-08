@@ -9,7 +9,7 @@ let package = Package(
         .executable(name: "faceid-cli", targets: ["FaceIDCLI"]),
     ],
     targets: [
-        // Face detection, alignment, recognition, liveness checks, secure storage, lock screen helpers (no UI)
+        // Face detection, alignment, recognition, attention and blink checks, secure storage, lock screen helpers (no UI)
         .target(
             name: "FaceCore",
             path: "Sources/FaceCore"

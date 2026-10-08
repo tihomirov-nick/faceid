@@ -54,22 +54,22 @@ enum AccessWatcher {
 
 // MARK: - Home
 
-/// The controls, laid out like Control Center on the Mac: switches as wide pills with an icon and a one-line name,
-/// two columns, and three buttons. Pointing at a switch tells what it does. Before setup there is only the setup
-/// button.
+/// The controls, laid out like Control Center on the Mac: switches as pills with an icon and a one-line name
+/// (unlocking across the whole width, the other four two by two), and three buttons. Pointing at a switch tells
+/// what it does. Before setup there is only the setup button.
 struct HomePage: View {
     @ObservedObject private var model = AppModel.shared
     @ObservedObject private var settings = AppSettings.shared
     @State private var busy = false
 
     enum Control {
-        case unlock, sudo, autoLock, attention, spoof, blink
+        case unlock, sudo, autoLock, attention, blink
     }
 
     var body: some View {
         if model.isEnrolled {
             VStack(spacing: 8) {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
+                VStack(spacing: 6) {
                     Tile(symbol: "lock.open.fill", title: L("Разблокировка"), on: settings.unlockEnabled && model.canUnlock,
                          attention: !model.canUnlock || model.passwordProblem, control: .unlock) {
                         if !model.canUnlock || model.passwordProblem {
@@ -79,24 +79,22 @@ struct HomePage: View {
                             settings.unlockEnabled.toggle()
                         }
                     }
-                    Tile(symbol: "terminal.fill", title: L("sudo в Терминале"), on: model.sudoState == .installed,
-                         attention: model.sudoState == .needsUpdate, control: .sudo) { toggleSudo() }
-                        .disabled(model.sudoState == .unsupported || busy)
-                    Tile(symbol: "figure.walk.departure", title: L("Автоблокировка"), on: settings.autoLockEnabled,
-                         control: .autoLock) {
-                        settings.autoLockEnabled.toggle()
-                    }
-                    Tile(symbol: "eye.fill", title: L("Внимание"), on: settings.requireAttention,
-                         control: .attention) {
-                        weaken(settings.requireAttention) { settings.requireAttention.toggle() }
-                    }
-                    Tile(symbol: "person.badge.shield.checkmark.fill", title: L("Защита от фото"), on: settings.spoofCheck,
-                         control: .spoof) {
-                        weaken(settings.spoofCheck) { settings.spoofCheck.toggle() }
-                    }
-                    Tile(symbol: "eye.slash.fill", title: L("Моргание"), on: settings.requireBlink,
-                         control: .blink) {
-                        weaken(settings.requireBlink) { settings.requireBlink.toggle() }
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
+                        Tile(symbol: "terminal.fill", title: L("sudo в Терминале"), on: model.sudoState == .installed,
+                             attention: model.sudoState == .needsUpdate, control: .sudo) { toggleSudo() }
+                            .disabled(model.sudoState == .unsupported || busy)
+                        Tile(symbol: "figure.walk.departure", title: L("Автоблокировка"), on: settings.autoLockEnabled,
+                             control: .autoLock) {
+                            settings.autoLockEnabled.toggle()
+                        }
+                        Tile(symbol: "eye.fill", title: L("Внимание"), on: settings.requireAttention,
+                             control: .attention) {
+                            weaken(settings.requireAttention) { settings.requireAttention.toggle() }
+                        }
+                        Tile(symbol: "eye.slash.fill", title: L("Моргание"), on: settings.requireBlink,
+                             control: .blink) {
+                            weaken(settings.requireBlink) { settings.requireBlink.toggle() }
+                        }
                     }
                 }
                 if let message = model.message {
@@ -146,8 +144,6 @@ struct HomePage: View {
             return L("Mac блокируется сам, когда вы от него отходите")
         case .attention:
             return L("FaceID узнает вас, только если вы смотрите на экран с открытыми глазами")
-        case .spoof:
-            return L("Не дает разблокировать Mac вашей фотографией или видео")
         case .blink:
             return L("Перед разблокировкой нужно моргнуть, на фото этого не сделать")
         }
@@ -448,7 +444,6 @@ struct MorePage: View {
                     Segments(selection: $settings.autoLockDelay,
                              options: [(15, L("15 с")), (30, L("30 с")), (60, L("1 мин")), (120, L("2 мин")), (300, L("5 мин"))])
                 }
-                Row(title: L("Кнопка для sudo")) { Switch(isOn: $settings.sudoNeedsConfirmation) }
                 Row(title: L("Анимация разблокировки")) { Switch(isOn: $settings.lockScreenBadge) }
                 Row(title: L("Внешние камеры")) { Switch(isOn: $settings.allowExternalCamera) }
                 Row(title: L("Запускать при входе"), last: true) {

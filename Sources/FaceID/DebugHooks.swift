@@ -89,9 +89,8 @@ enum DebugHooks {
                         return
                     }
                     let embedding = try engine.embedding(of: buffer, points: face.points)
-                    let liveness = engine.liveness(of: buffer, face: face) ?? -1
-                    Log.write(String(format: "selftest: models OK (%@) · embedding %d · liveness %.3f",
-                                     AppPaths.recognitionModelURL()?.path ?? "-", embedding.count, liveness))
+                    Log.write(String(format: "selftest: model OK (%@) · embedding %d",
+                                     AppPaths.recognitionModelURL()?.path ?? "-", embedding.count))
                 } catch {
                     Log.write("selftest: \(error.localizedDescription)")
                 }
@@ -99,18 +98,16 @@ enum DebugHooks {
         case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
         case "light": NSApp.appearance = NSAppearance(named: .aqua)
         case "sudo-demo":
-            // sudo-demo=scanning|recognized|failed: changes the phase of the shown demo prompt, or shows one
-            let phase: SudoPrompt.Phase = value == "recognized" ? .recognized
+            // sudo-demo=scanning|allowed|failed: changes the phase of the shown demo prompt, or shows one
+            let phase: SudoPrompt.Phase = value == "allowed" ? .allowed
                 : value == "failed" ? .failed(ScanHint.notRecognized.message) : .scanning
             if let demoPrompt, Island.shared.showsSudoPrompt {
                 demoPrompt.state.phase = phase
             } else {
                 let prompt = SudoPrompt(command: "sudo softwareupdate --install --all",
-                                        requester: Requester.find(from: getpid()) ?? Requester(name: L("Терминал"), icon: nil),
-                                        needsConfirmation: true)
+                                        requester: Requester.find(from: getpid()) ?? Requester(name: L("Терминал"), icon: nil))
                 prompt.state.phase = phase
                 prompt.onPassword = { prompt.close() }
-                prompt.onAllow = { prompt.close() }
                 prompt.show()
                 demoPrompt = prompt
             }

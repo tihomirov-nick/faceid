@@ -52,21 +52,6 @@ final class BlinkTrackerTests: XCTestCase {
     }
 }
 
-final class FaceCropTests: XCTestCase {
-    /// Same numbers as Silent-Face-Anti-Spoofing's CropImage._get_new_box.
-    func testContextBoxMatchesTheOriginal() {
-        // A face in the middle: the box grows around its center.
-        XCTAssertEqual(FaceCrop.contextRect(box: CGRect(x: 600, y: 300, width: 100, height: 120), scale: 2.7, width: 1280, height: 720),
-                       CGRect(x: 515, y: 198, width: 271, height: 325))
-        // Near the left and top edges: the box slides inside the frame.
-        XCTAssertEqual(FaceCrop.contextRect(box: CGRect(x: 10, y: 20, width: 100, height: 100), scale: 4, width: 1280, height: 720),
-                       CGRect(x: 0, y: 0, width: 401, height: 401))
-        // Larger than the frame: the scale is reduced to fit.
-        XCTAssertEqual(FaceCrop.contextRect(box: CGRect(x: 100, y: 100, width: 400, height: 400), scale: 4, width: 640, height: 480),
-                       CGRect(x: 60, y: 0, width: 480, height: 480))
-    }
-}
-
 final class EnrollmentTests: XCTestCase {
     private func unit(_ values: [Float]) -> [Float] {
         FaceMatcher.normalized(values + Array(repeating: 0, count: FaceEmbedder.dimension - values.count))

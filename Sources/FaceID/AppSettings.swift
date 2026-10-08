@@ -41,9 +41,7 @@ final class AppSettings: ObservableObject {
         static let strictness = "strictness"
         static let attention = "requireAttention"
         static let blink = "requireBlink"
-        static let spoof = "spoofCheck"
         static let externalCamera = "allowExternalCamera"
-        static let sudoConfirm = "sudoNeedsConfirmation"
         static let badge = "lockScreenBadge"
     }
 
@@ -53,19 +51,16 @@ final class AppSettings: ObservableObject {
     @Published var autoLockDelay: Double { didSet { defaults.set(autoLockDelay, forKey: Key.autoLockDelay) } }
     @Published var strictness: Strictness { didSet { defaults.set(strictness.rawValue, forKey: Key.strictness) } }
     @Published var requireAttention: Bool { didSet { defaults.set(requireAttention, forKey: Key.attention) } }
+    /// The only check against a photo held up to the camera, so it is on by default.
     @Published var requireBlink: Bool { didSet { defaults.set(requireBlink, forKey: Key.blink) } }
-    @Published var spoofCheck: Bool { didSet { defaults.set(spoofCheck, forKey: Key.spoof) } }
     @Published var allowExternalCamera: Bool { didSet { defaults.set(allowExternalCamera, forKey: Key.externalCamera) } }
-    /// sudo needs a click on "Allow" after the face is recognized: presence alone is not consent.
-    @Published var sudoNeedsConfirmation: Bool { didSet { defaults.set(sudoNeedsConfirmation, forKey: Key.sudoConfirm) } }
     /// Show the scan above the lock screen (where macOS allows) and Face ID's approval in the notch after unlocking.
     @Published var lockScreenBadge: Bool { didSet { defaults.set(lockScreenBadge, forKey: Key.badge) } }
 
     private init() {
         defaults.register(defaults: [
             Key.unlock: true, Key.autoLock: false, Key.autoLockDelay: 30.0, Key.strictness: Strictness.standard.rawValue,
-            Key.attention: true, Key.blink: false, Key.spoof: true, Key.externalCamera: false, Key.sudoConfirm: true,
-            Key.badge: true,
+            Key.attention: true, Key.blink: true, Key.externalCamera: false, Key.badge: true,
         ])
         unlockEnabled = defaults.bool(forKey: Key.unlock)
         autoLockEnabled = defaults.bool(forKey: Key.autoLock)
@@ -73,15 +68,13 @@ final class AppSettings: ObservableObject {
         strictness = Strictness(rawValue: defaults.integer(forKey: Key.strictness)) ?? .standard
         requireAttention = defaults.bool(forKey: Key.attention)
         requireBlink = defaults.bool(forKey: Key.blink)
-        spoofCheck = defaults.bool(forKey: Key.spoof)
         allowExternalCamera = defaults.bool(forKey: Key.externalCamera)
-        sudoNeedsConfirmation = defaults.bool(forKey: Key.sudoConfirm)
         lockScreenBadge = defaults.bool(forKey: Key.badge)
     }
 
     /// Recognition rules for unlocking and sudo.
     var policy: ScanPolicy {
         ScanPolicy(threshold: strictness.threshold, requiredMatches: strictness == .strict ? 3 : 2,
-                   requireAttention: requireAttention, requireBlink: requireBlink, spoofCheck: spoofCheck)
+                   requireAttention: requireAttention, requireBlink: requireBlink)
     }
 }
