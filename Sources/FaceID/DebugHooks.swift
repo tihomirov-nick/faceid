@@ -218,14 +218,14 @@ enum DebugHooks {
         let frames: [(String, MenuBarIcon.Frame)] = [("rest", .init()), ("scan", .init(face: 0.45, scan: 0.35)),
                                                      ("check", .init(face: 0, check: 1)), ("shake", .init(shake: -1.5))]
         for (name, frame) in frames {
-            let size = MenuBarIcon.canvas * 8
-            let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size), pixelsHigh: Int(size), bitsPerSample: 8,
-                                       samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
-                                       bytesPerRow: 0, bitsPerPixel: 0)!
-            rep.size = NSSize(width: MenuBarIcon.canvas, height: MenuBarIcon.canvas)
+            let size = MenuBarIcon.size
+            let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 8), pixelsHigh: Int(size.height * 8),
+                                       bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                       colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+            rep.size = size
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-            let bounds = NSRect(x: 0, y: 0, width: MenuBarIcon.canvas, height: MenuBarIcon.canvas)
+            let bounds = NSRect(origin: .zero, size: size)
             MenuBarIcon.image(frame).draw(in: bounds)
             NSColor.white.set()
             bounds.fill(using: .sourceAtop)

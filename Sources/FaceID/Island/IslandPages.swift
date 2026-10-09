@@ -447,7 +447,7 @@ struct MorePage: View {
                 Row(title: L("Проверять обновления")) {
                     Switch(isOn: Binding(get: { updater.automaticChecks }, set: { updater.automaticChecks = $0 }))
                 }
-                .help(L("Раз в сутки FaceID смотрит, нет ли новой версии на GitHub, и предлагает обновиться. Без вашего согласия ничего не ставится"))
+                .help(L("Раз в сутки FaceID смотрит, нет ли новой версии, и предлагает обновиться. Без вашего согласия ничего не ставится"))
                 Row(title: L("Версия %@", updater.currentVersion), last: true) { UpdateStatus(updater: updater) }
             }
             .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -835,11 +835,12 @@ final class NotchHotspot {
 }
 
 /// The Face ID glyph in the menu bar (`MenuBarIcon`): a click opens the controls in the island, a right click offers
-/// Quit. It moves when a face is checked.
+/// Quit. It moves when a face is checked. The item is as wide as the icon plus the menu bar's own margins
+/// (`variableLength`), like the other apps' icons: a square item would leave a wider gap around it.
 @MainActor
 final class StatusItemController: NSObject {
     static let shared = StatusItemController()
-    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let icon = MenuBarIcon()
 
     private override init() {

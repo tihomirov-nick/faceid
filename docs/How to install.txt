@@ -2,8 +2,10 @@ FACEID
 ======
 
 INSTALLATION
-1. Drag the FaceID icon onto the Applications folder next to it.
-2. Open the Applications folder in Finder and launch FaceID.
+Double-click FaceID next to this file. The app moves itself to the
+Applications folder and restarts from there.
+If you prefer, drag the FaceID icon onto the Applications folder next to
+it and launch FaceID from Applications.
 
 IF macOS WON'T OPEN THE APP
 The app is not notarized by Apple, so on first launch macOS may show a
@@ -17,7 +19,8 @@ malicious software"). You need to allow it once.
   • On macOS 14, right-click FaceID in Finder, choose "Open" and click
     "Open" again in the warning.
 
-  • If that doesn't help, open Terminal and run:
+  • If that doesn't help, drag FaceID onto the Applications folder, open
+    Terminal and run:
         xattr -dr com.apple.quarantine /Applications/FaceID.app
 
 SETUP

@@ -10,7 +10,7 @@ unset SDKROOT
 
 APP_NAME="FaceID"
 BUNDLE_ID="${BUNDLE_ID:-com.faceid.app}"
-VERSION="${VERSION:-1.1.0}"
+VERSION="${VERSION:-1.1.1}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
 APP="$ROOT/build/$APP_NAME.app"
 MODELS=(SFace)

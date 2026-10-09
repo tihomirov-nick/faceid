@@ -41,7 +41,7 @@ struct UpdatePage: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if !updater.canInstallInPlace && !updater.isDevelopmentBuild {
+            if !updater.installsByItself && !updater.isDevelopmentBuild {
                 Text(L("Переместите FaceID в «Программы», чтобы он обновлялся сам"))
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundStyle(.orange)
@@ -116,10 +116,12 @@ struct UpdatePage: View {
                 }
                 .appButton(.secondary)
                 // After `cannotReplace` the updater keeps the downloaded DMG and opens it in Finder instead of the page.
-                Button(failure == .cannotReplace && !updater.isDevelopmentBuild ? L("Открыть DMG") : L("Страница релиза")) {
+                let installer = failure == .cannotReplace && !updater.isDevelopmentBuild
+                Button(installer ? L("Открыть установщик") : L("Страница загрузки")) {
                     updater.openReleasePage()
                 }
                 .appButton(.primary)
+                .help(installer ? L("Показать скачанный установщик в Finder") : L("Открыть в браузере страницу, где можно скачать FaceID"))
             }
             .controlSize(.small)
             .padding(.top, 2)
@@ -140,15 +142,15 @@ struct UpdatePage: View {
     /// What went wrong, in a sentence or two.
     static func text(for failure: Updater.Failure, developmentBuild: Bool) -> String {
         switch failure {
-        case .offline: L("Не удалось связаться с GitHub. Проверьте подключение к интернету")
-        case .rateLimited: L("GitHub временно ограничил запросы. Попробуйте через час")
-        case .noInstaller: L("В релизе нет установщика FaceID. Новую версию можно поставить вручную со страницы релиза")
+        case .offline: L("Сервер обновлений не отвечает. Проверьте подключение к интернету")
+        case .rateLimited: L("Сервер обновлений временно ограничил запросы. Попробуйте через час")
+        case .noInstaller: L("У новой версии пока нет установщика. Попробуйте позже")
         case .download: L("Загрузка прервалась. Попробуйте еще раз")
         case .damaged: L("Загруженный файл поврежден")
         case .notTrusted: L("Подпись новой версии не совпадает с подписью этой копии FaceID, поэтому FaceID ее не ставит")
         case .cannotReplace:
             developmentBuild ? L("Сборка для разработки не обновляется сама")
-                             : L("FaceID не может обновить себя в этой папке. Откройте DMG и перетащите FaceID в «Программы»")
+                             : L("Не получилось поставить новую версию. Откройте установщик и перетащите FaceID в папку «Программы»")
         }
     }
 
@@ -156,8 +158,8 @@ struct UpdatePage: View {
     static func shortText(for failure: Updater.Failure) -> String {
         switch failure {
         case .offline: L("Нет подключения")
-        case .rateLimited: L("GitHub просит подождать")
-        case .noInstaller: L("В релизе нет установщика")
+        case .rateLimited: L("Сервер просит подождать")
+        case .noInstaller: L("Нет установщика")
         case .download: L("Загрузка прервалась")
         case .damaged: L("Файл поврежден")
         case .notTrusted: L("Подпись не совпадает")
