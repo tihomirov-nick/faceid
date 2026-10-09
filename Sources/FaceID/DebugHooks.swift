@@ -1,6 +1,7 @@
 #if DEBUG
 import AppKit
 import FaceCore
+import ServiceManagement
 import SwiftUI
 
 /// Test hooks driven by environment variables (used for automated UI checks), in development builds only:
@@ -133,9 +134,12 @@ enum DebugHooks {
     /// top edge as from the notch, from the first launch to everyday use: the controls before setup, the face setup
     /// (start, a pass in progress, the first pass done, the end), the Mac password, the permissions, setup done, the lock
     /// screen (scan, success, failure), the auto-lock countdown, the controls, the faces, the face check, the settings,
-    /// an update on offer, the keychain's confirmation, and the menu bar icon's frames (white, menubar-*.png). A set-up
-    /// FaceID is made up in memory: two faces of random numbers, the password and the permissions counted as given;
-    /// nothing is saved. The island is as tall as its content, as in the app.
+    /// the settings with opening at login switched off in System Settings (more-approval) and with the automatic checks
+    /// off (more-manual), an update on offer, the restart
+    /// of an update that installed itself (updating), the keychain's confirmation, the hint while FaceID asks the keychain
+    /// by itself after an update (keychain-hint), and the menu bar icon's frames (white, menubar-*.png). A set-up FaceID is
+    /// made up in memory: two faces of random numbers, the password and the permissions counted as given, a login item
+    /// that only says its status; nothing is saved or registered. The island is as tall as its content, as in the app.
     static func renderStates(to folder: String) {
         let geometry = IslandGeometry(screen: NSScreen.main)
         FaceIDGlyph.debugSuccessTime = 10
@@ -152,7 +156,7 @@ enum DebugHooks {
                 .frame(width: geometry.size(for: content).width)
                 .padding(.top, geometry.contentTop)
                 .padding(.bottom, Island.bottomPadding)
-                .background(IslandShape(flare: flare, radius: content.kind == 0 || content.kind == 4 ? 30 : 34)
+                .background(IslandShape(flare: flare, radius: content.cornerRadius)
                     .fill(Color.black)
                     .padding(.horizontal, -flare))
                 .padding(.horizontal, flare)
@@ -202,7 +206,13 @@ enum DebugHooks {
         let test = TestModel()
         test.scanResult = .recognized(similarity: 0.8, embedding: [])
         write("test", .test(test), TestView(test: test))
-        write("more", .more, MorePage())
+        write("more", .more, MorePage(loginItem: Updater.LoginItem(service: LoginStandIn(.enabled))))
+        write("more-approval", .more, MorePage(loginItem: Updater.LoginItem(service: LoginStandIn(.requiresApproval))))
+        // The automatic checks switched off, in memory only (the registration domain is never saved): "Update
+        // Automatically" is dimmed.
+        UserDefaults.standard.register(defaults: ["checkForUpdates": false])
+        write("more-manual", .more, MorePage(loginItem: Updater.LoginItem(service: LoginStandIn(.enabled))))
+        UserDefaults.standard.register(defaults: ["checkForUpdates": true])
         UpdateCenter.preview = .available(Updater.Release(
             version: "1.1.0", title: "FaceID 1.1.0",
             notes: "FaceID разблокирует Mac лицом, как Face ID на iPhone. Когда вы будите заблокированный Mac и смотрите на него, "
@@ -212,7 +222,9 @@ enum DebugHooks {
             dmg: URL(string: "https://github.com/tihomirov-nick/faceid/releases/download/v1.1.0/FaceID-1.1.0.dmg")!, size: 11_400_000))
         write("update", .update, UpdatePage())
         UpdateCenter.preview = nil
+        write("updating", .updating("1.1.4"), content(.updating("1.1.4")))
         write("keychain", .keychain, KeychainPage())
+        write("keychain-hint", .keychainHint, content(.keychainHint))
 
         // The menu bar icon at rest, scanning, with the checkmark and shaking "no": white at 8x.
         let frames: [(String, MenuBarIcon.Frame)] = [("rest", .init()), ("scan", .init(face: 0.45, scan: 0.35)),
@@ -233,6 +245,18 @@ enum DebugHooks {
             try? rep.representation(using: .png, properties: [:])?
                 .write(to: URL(fileURLWithPath: folder).appendingPathComponent("menubar-\(name).png"))
         }
+    }
+
+    /// A login item that only says its status, for the drawing: nothing is registered or unregistered.
+    private final class LoginStandIn: UpdaterLoginService {
+        let status: SMAppService.Status
+
+        init(_ status: SMAppService.Status) {
+            self.status = status
+        }
+
+        func register() throws {}
+        func unregister() throws {}
     }
 
     /// A face made of random numbers, in memory only.
@@ -294,6 +318,12 @@ enum DebugHooks {
                 + "\(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0) · FaceID \(getpid()) active \(NSApp.isActive) · "
                 + "key window \(NSApp.keyWindow.map { "\($0.windowNumber)" } ?? "-") · a click on the island goes to \(clickTarget())")
         case "setup": Setup.next()
+        case "keychain-hint":
+            // The hint shown while FaceID asks the keychain by itself after an update (the keychain is not asked here)
+            Island.shared.show(.keychainHint)
+        case "updating":
+            // updating=<version>: the island before the restart of an update that installed itself (nothing restarts)
+            Island.shared.show(.updating(value.isEmpty ? "1.1.4" : value))
         case "update-demo":
             // update-demo=available|downloading|installing|failed|cannot|offline|checking|uptodate|off: the update
             // interface in that state (nothing is downloaded)

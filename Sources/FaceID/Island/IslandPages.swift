@@ -26,7 +26,9 @@ enum Setup {
             PermissionWatcher.start(.accessibility)
         } else {
             model.settings.unlockEnabled = true
-            if !model.launchAtLogin { model.setLaunchAtLogin(true) }
+            // FaceID opens at login, unless the user has switched that off in the settings or in System Settings.
+            let login = Updater.LoginItem.shared
+            if login.choice == nil, !login.isEnabled, !login.needsApproval { login.set(true) }
             Haptics.success()
             // Right after the face was recorded its own success sound has just played.
             let afterFace = if case .enroll = Island.shared.content { true } else { false }
@@ -424,6 +426,12 @@ struct MorePage: View {
     @ObservedObject private var model = AppModel.shared
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var updater = UpdateCenter.shared.updater
+    @ObservedObject private var loginItem: Updater.LoginItem
+
+    /// `loginItem`: a stand-in for the offscreen drawing (DebugHooks), so that nothing is registered for real.
+    @MainActor init(loginItem: Updater.LoginItem? = nil) {
+        _loginItem = ObservedObject(wrappedValue: loginItem ?? .shared)
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -446,12 +454,33 @@ struct MorePage: View {
                 .help(L("Как FaceID выглядит в Finder, Launchpad и списках macOS"))
                 Row(title: L("Внешние камеры")) { Switch(isOn: $settings.allowExternalCamera) }
                 Row(title: L("Запускать при входе")) {
-                    Switch(isOn: Binding(get: { model.launchAtLogin }, set: { model.setLaunchAtLogin($0) }))
+                    if loginItem.needsApproval {
+                        // Switched off in System Settings: only the user can switch it on there.
+                        Button {
+                            loginItem.openSystemSettings()
+                        } label: {
+                            // A size smaller than the other buttons: the row's name stays whole beside it.
+                            Text(L("Открыть «Объекты входа»")).font(.system(size: 11, weight: .medium))
+                        }
+                        .appButton(.secondary)
+                        .controlSize(.mini)
+                        .fixedSize()
+                    } else {
+                        Switch(isOn: Binding(get: { loginItem.isEnabled }, set: { loginItem.set($0) }))
+                    }
                 }
+                .help(loginItem.needsApproval ? L("Запуск при входе выключен в Системных настройках. Включите FaceID в разделе «Объекты входа»")
+                                              : L("FaceID запускается, когда вы входите в систему, и сразу готов разблокировать Mac"))
                 Row(title: L("Проверять обновления")) {
                     Switch(isOn: Binding(get: { updater.automaticChecks }, set: { updater.automaticChecks = $0 }))
                 }
-                .help(L("Раз в сутки FaceID смотрит, нет ли новой версии, и предлагает обновиться. Без вашего согласия ничего не ставится"))
+                .help(L("FaceID смотрит, нет ли новой версии, при запуске, раз в три часа и после пробуждения Mac"))
+                Row(title: L("Обновлять автоматически")) {
+                    Switch(isOn: Binding(get: { updater.automaticInstall }, set: { updater.automaticInstall = $0 }))
+                }
+                .disabled(!updater.automaticChecks)
+                .opacity(updater.automaticChecks ? 1 : 0.4)
+                .help(L("Новая версия ставится сама, когда FaceID свободен: экран разблокирован, лицо не проверяется и островок закрыт. Если выключить, FaceID будет предлагать обновиться"))
                 Row(title: L("Версия %@", updater.currentVersion), last: true) { UpdateStatus(updater: updater) }
             }
             .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -479,6 +508,8 @@ struct MorePage: View {
         .padding(.top, 8)
         .foregroundStyle(.white)
         .animation(.easeInOut(duration: 0.2), value: model.message)
+        // System Settings may have changed it since.
+        .onAppear { loginItem.refresh() }
     }
 
     private struct Row<Control: View>: View {
@@ -488,7 +519,8 @@ struct MorePage: View {
 
         var body: some View {
             HStack(spacing: 8) {
-                Text(title).font(.system(size: 12.5, weight: .medium)).lineLimit(1)
+                // The name stays whole; the control's status text gives way.
+                Text(title).font(.system(size: 12.5, weight: .medium)).lineLimit(1).layoutPriority(1)
                 Spacer(minLength: 6)
                 control
             }
@@ -766,18 +798,17 @@ struct PermissionPage: View {
 
 /// FaceID was updated or signed differently, and the keychain asks once more before FaceID may read the face and the
 /// password. One button starts it; the keychain's own prompt asks for the Mac password. "Always Allow" lets this build
-/// in for good, "Allow" only this once.
+/// in for good, "Allow" only this once. After an update FaceID asks by itself first (`KeychainPrompt`); the page is for
+/// when that did not work out, and for opening the controls before it.
 struct KeychainPage: View {
-    @State private var asking = false
-    @State private var onlyOnce = false
-    @State private var refusals = 0
+    @ObservedObject private var prompt = KeychainPrompt.shared
 
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: "key.fill")
                 .font(.system(size: 24, weight: .regular))
                 .foregroundStyle(.white)
-                .keyframeAnimator(initialValue: 0.0, trigger: refusals) { view, offset in
+                .keyframeAnimator(initialValue: 0.0, trigger: prompt.refusals) { view, offset in
                     view.offset(x: offset)
                 } keyframes: { _ in
                     KeyframeTrack {
@@ -788,7 +819,7 @@ struct KeychainPage: View {
                         SpringKeyframe(0, duration: 0.12)
                     }
                 }
-            Text(onlyOnce ? L("Нажмите «Разрешать всегда», чтобы macOS не спрашивала снова") : L("Введите пароль Mac и нажмите «Разрешать всегда»"))
+            Text(prompt.onlyOnce ? L("Нажмите «Разрешать всегда», чтобы macOS не спрашивала снова") : L("Введите пароль Mac и нажмите «Разрешать всегда»"))
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(.white.opacity(0.8))
                 .lineLimit(1)
@@ -796,9 +827,9 @@ struct KeychainPage: View {
             HStack(spacing: 8) {
                 Button(L("Позже")) { Island.shared.hide() }
                     .appButton(.secondary)
-                Button(asking ? L("Жду…") : L("Продолжить")) { confirm() }
+                Button(prompt.asking ? L("Жду…") : L("Продолжить")) { Task { await prompt.confirm() } }
                     .appButton(.primary)
-                    .disabled(asking)
+                    .disabled(prompt.asking)
                     .keyboardShortcut(.defaultAction)
                     .help(L("FaceID обновился, и macOS спросит, можно ли ему снова читать лицо и пароль из Связки ключей"))
             }
@@ -806,29 +837,25 @@ struct KeychainPage: View {
         .padding(.horizontal, 14)
         .padding(.top, 12)
     }
+}
 
-    private func confirm() {
-        asking = true
-        // The keychain's prompt is another window: clicks in it must not close the island.
-        Island.shared.keepOpen = true
-        Task {
-            let result = await AppModel.shared.confirmKeychain()
-            Island.shared.keepOpen = false
-            asking = false
-            switch result {
-            case .granted:
-                Setup.next()
-            case .onlyOnce:
-                onlyOnce = true
-                refusals += 1
-                Haptics.failure()
-                SoundEffects.play(.failure)
-            case .denied:
-                refusals += 1
-                Haptics.failure()
-                SoundEffects.play(.failure)
-            }
+/// FaceID asks the keychain by itself after an update (`KeychainPrompt`): while macOS shows its prompt, the island says
+/// which of its buttons lets the new version in for good. Takes no clicks or keys, the prompt has them.
+struct KeychainHintPage: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "key.fill")
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(.white)
+            Text(L("После обновления macOS попросит подтвердить доступ к паролю — нажмите «Разрешать всегда»"))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.85))
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
     }
 }
 

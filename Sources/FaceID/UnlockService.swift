@@ -77,11 +77,14 @@ final class UnlockService {
             island.hide()
         }
         approvedAt = nil
-        // FaceID started (or was refused by the keychain) on the lock screen: now it may read the keychain, and if the
-        // keychain wants a confirmation, the island asks for it on the desktop.
+        // FaceID started (or was refused by the keychain) on the lock screen: now it may read the keychain. If the
+        // keychain wants a confirmation, FaceID asks for it by itself the first time in this launch, on a touch a few
+        // seconds after the unlock (the keys of the unlock do not count); after that the island's page asks.
         guard let model else { return }
         if model.secretsDeferred { model.loadSecrets() }
-        if model.keychainNeedsConfirmation {
+        if model.keychainNeedsConfirmation, !KeychainPrompt.shared.askedByItself {
+            KeychainPrompt.shared.wait(since: Date().addingTimeInterval(KeychainPromptPlan.afterUnlock))
+        } else if model.keychainNeedsConfirmation {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                 MainActor.assumeIsolated {
                     guard model.keychainNeedsConfirmation, !LockScreen.isLocked, !Island.shared.isShowing else { return }

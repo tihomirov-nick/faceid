@@ -2,7 +2,6 @@ import AppKit
 import Foundation
 import os
 import Security
-import ServiceManagement
 
 /// Where the copies of the app lie and how a copy gets into place. The app lives in /Applications, or in ~/Applications
 /// when this user may not write to /Applications; a copy anywhere else moves there by itself (see `Updater.start()`).
@@ -357,17 +356,18 @@ extension Updater {
         return path.hasPrefix("/Volumes/") || folders.contains { path.hasPrefix("\(home)/\($0)/") }
     }
 
-    /// The restart: arguments for /bin/sh that wait for process `pid` to end, open `app` (when there is one), then detach
-    /// the disk image at `image` (a few tries: the system may hold it for a moment).
-    nonisolated static func relaunchArguments(pid: Int32, app: URL?, detaching image: URL?,
+    /// The restart: arguments for /bin/sh that wait for process `pid` to end, open `app` (when there is one; `background`:
+    /// without bringing it to the front), then detach the disk image at `image` (a few tries: the system may hold it for
+    /// a moment).
+    nonisolated static func relaunchArguments(pid: Int32, app: URL?, detaching image: URL?, background: Bool = false,
                                               open: String = "/usr/bin/open", hdiutil: String = "/usr/bin/hdiutil") -> [String] {
         let script = """
             while kill -0 "$0" 2>/dev/null; do sleep 0.1; done
-            [ -z "$1" ] || "$3" "$1"
+            if [ -n "$1" ]; then if [ -n "$5" ]; then "$3" -g "$1"; else "$3" "$1"; fi; fi
             [ -n "$2" ] || exit 0
             for attempt in 1 2 3 4 5 6 7 8 9 10; do "$4" detach "$2" -quiet && exit 0; sleep 1; done
             """
-        return ["-c", script, String(pid), app?.path ?? "", image?.path ?? "", open, hdiutil]
+        return ["-c", script, String(pid), app?.path ?? "", image?.path ?? "", open, hdiutil, background ? "-g" : ""]
     }
 
     // MARK: Other running copies
@@ -458,23 +458,11 @@ extension Updater {
                        time: Date(timeIntervalSince1970: time))
     }
 
-    /// Run at launch by the copy that has just taken over from another one.
-    static func finish(_ handoff: Handoff) {
+    /// Run at launch by the copy that has just taken over from another one. When the previous copy opened at login, the
+    /// login item is registered anew from this copy (see `LoginItem.registerAgain`).
+    static func finish(_ handoff: Handoff, loginItem: LoginItem) {
         log("Took over from \(handoff.from.path)")
-        if handoff.loginItem { registerLoginItemAgain() }
-    }
-
-    /// The previous copy opened at login: the login item is registered anew from this copy, so that it opens this copy
-    /// and not the one left behind (in the Trash, on a detached disk image).
-    private static func registerLoginItemAgain() {
-        let service = SMAppService.mainApp
-        do {
-            try? service.unregister()
-            try service.register()
-            log("Login item registered again for \(Bundle.main.bundleURL.path)")
-        } catch {
-            log("Cannot register the login item again: \(error.localizedDescription) (status \(service.status.rawValue))")
-        }
+        if handoff.loginItem { loginItem.registerAgain() }
     }
 
     // MARK: Paths

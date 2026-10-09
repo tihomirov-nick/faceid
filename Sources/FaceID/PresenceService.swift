@@ -16,6 +16,9 @@ final class PresenceService {
 
     private var countingDown = false
 
+    /// The camera is on, watching for the owner before the auto-lock.
+    var isWatching: Bool { camera != nil }
+
     /// Idle time before the camera starts checking.
     static let idleBeforeWatching: TimeInterval = 15
     /// The countdown in the island before locking.

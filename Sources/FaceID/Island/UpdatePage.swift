@@ -179,6 +179,25 @@ struct UpdatePage: View {
     }
 }
 
+/// An update that installed itself restarts FaceID: one line for the moment before the quit (`UpdateCenter`).
+struct UpdatingPage: View {
+    let version: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Brand.green)
+            Text(L("Обновляюсь до версии %@…", version))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+    }
+}
+
 /// The download's progress: a capsule filling with green, or a light running through it while the length is unknown.
 struct ProgressBar: View {
     let value: Double?
@@ -251,7 +270,14 @@ struct UpdateStatus: View {
 
     private var status: (String, Color)? {
         switch UpdateCenter.shared.state {
-        case .idle: updater.isDevelopmentBuild ? (L("Для разработки"), .white.opacity(0.45)) : nil
+        case .idle:
+            if let (release, ready) = updater.automaticUpdate {
+                // Installing by itself: downloaded and checked in the background, then the restart as soon as FaceID is
+                // free (the settings being open keep it busy).
+                ready ? (L("Обновлюсь до %@", release.version), Brand.green) : (L("Загружаю %@", release.version), .white.opacity(0.6))
+            } else {
+                updater.isDevelopmentBuild ? (L("Для разработки"), .white.opacity(0.45)) : nil
+            }
         case .checking: (L("Проверяю…"), .white.opacity(0.6))
         case .upToDate: (L("Последняя"), .white.opacity(0.6))
         case let .available(release): (L("Доступна %@", release.version), Brand.green)

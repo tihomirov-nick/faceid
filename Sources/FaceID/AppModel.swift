@@ -2,7 +2,6 @@ import AppKit
 import AVFoundation
 import FaceCore
 import Foundation
-import ServiceManagement
 
 /// App state shared by the windows, the menu and the services: the enrolled face, permissions, status.
 @MainActor
@@ -14,7 +13,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var passwordSaved = false
     @Published private(set) var cameraStatus = Camera.authorizationStatus
     @Published private(set) var accessibilityTrusted = LockScreen.canType
-    @Published private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
     /// A problem to show in the controls for a moment (a face the keychain would not save, say).
     @Published var message: String?
     /// The typed password did not unlock the screen: it probably changed.
@@ -98,7 +96,7 @@ final class AppModel: ObservableObject {
     func refresh() {
         cameraStatus = Camera.authorizationStatus
         accessibilityTrusted = LockScreen.canType
-        launchAtLogin = SMAppService.mainApp.status == .enabled
+        Updater.LoginItem.shared.refresh()
         passwordSaved = PasswordStore.exists
     }
 
@@ -247,15 +245,6 @@ final class AppModel: ObservableObject {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") {
             NSWorkspace.shared.open(url)
         }
-    }
-
-    func setLaunchAtLogin(_ on: Bool) {
-        do {
-            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
-        } catch {
-            show(error.localizedDescription)
-        }
-        launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 
     // MARK: - Scans

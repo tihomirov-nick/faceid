@@ -14,6 +14,11 @@ public enum LockScreen {
         (session["CGSSessionScreenIsLocked"] as? NSNumber)?.boolValue ?? false
     }
 
+    /// This user's session is the one at the console: fast user switching may have put another one there.
+    public static var isOnConsole: Bool {
+        (session["kCGSSessionOnConsoleKey"] as? NSNumber)?.boolValue ?? true
+    }
+
     /// The process that turned on secure keyboard input (a focused password field), if any.
     public static var secureInputPID: pid_t? {
         (session["kCGSSessionSecureInputPID"] as? NSNumber).map { pid_t($0.int32Value) }

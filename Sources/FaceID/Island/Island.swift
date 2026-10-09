@@ -29,8 +29,12 @@ final class Island: ObservableObject {
         case camera
         /// The keychain wants the user's confirmation before FaceID may read the face and the password again.
         case keychain
+        /// FaceID asks the keychain by itself after an update: which button to press in the prompt macOS shows now.
+        case keychainHint
         /// A new version of FaceID, its download and install.
         case update
+        /// An update that installed itself restarts FaceID: the version it brings.
+        case updating(String)
         /// Setup finished.
         case ready
 
@@ -49,13 +53,15 @@ final class Island: ObservableObject {
             case .keychain: 11
             case .camera: 12
             case .update: 13
+            case .keychainHint: 14
+            case .updating: 15
             }
         }
 
         /// Plain values rather than a model object.
         var isValue: Bool {
             switch self {
-            case .scan, .countdown, .home, .more, .faces, .access, .camera, .keychain, .update, .ready: true
+            case .scan, .countdown, .home, .more, .faces, .access, .camera, .keychain, .keychainHint, .update, .updating, .ready: true
             case .enroll, .test, .password: false
             }
         }
@@ -64,7 +70,8 @@ final class Island: ObservableObject {
         var interactive: Bool {
             switch self {
             case .enroll, .test, .home, .more, .faces, .password, .access, .camera, .keychain, .update: true
-            case .scan, .countdown, .ready: false
+            // The hint stays out of the way of the keychain's prompt, which takes the keys and the clicks.
+            case .scan, .countdown, .ready, .keychainHint, .updating: false
             }
         }
 
@@ -73,6 +80,14 @@ final class Island: ObservableObject {
         var takesKeyboard: Bool {
             if case .update = self { return false }
             return interactive
+        }
+
+        /// A one-line island (the glyph, the countdown, the restart) has rounder corners.
+        var cornerRadius: CGFloat {
+            switch self {
+            case .scan, .countdown, .updating: 30
+            default: 34
+            }
         }
 
         /// Closes when the user clicks elsewhere, as the Dynamic Island does.
@@ -406,14 +421,16 @@ struct IslandGeometry: Equatable {
         case .test: return CGSize(width: 360, height: top + 258)
         case .countdown: return CGSize(width: max(notchWidth + 60, 240), height: top + 50)
         case .home: return home
-        case .more: return CGSize(width: 390, height: top + 413)
+        case .more: return CGSize(width: 390, height: top + 449)
         case .faces:
             let count = AppModel.shared.enrollment?.faces.count ?? 1
             return CGSize(width: 360, height: top + 88 + CGFloat(count) * 41)
         case .password: return CGSize(width: 300, height: top + 98)
         case .access, .camera: return CGSize(width: 250, height: top + 96)
         case .keychain: return CGSize(width: 330, height: top + 116)
+        case .keychainHint: return CGSize(width: 330, height: top + 90)
         case .update: return CGSize(width: 340, height: top + 132)
+        case .updating: return CGSize(width: max(notchWidth + 60, 290), height: top + 50)
         case .ready: return CGSize(width: max(notchWidth + 10, 190), height: top + 86)
         }
     }
@@ -455,7 +472,7 @@ struct IslandView: View {
         let geometry = island.geometry
         let size = island.expanded ? island.content.map { island.size(for: $0) } ?? geometry.collapsed : geometry.collapsed
         let flare = island.expanded ? IslandGeometry.flare : 0
-        let radius: CGFloat = island.expanded ? (island.content?.kind == 0 || island.content?.kind == 4 ? 30 : 34) : 10
+        let radius: CGFloat = island.expanded ? island.content?.cornerRadius ?? 34 : 10
         ZStack(alignment: .top) {
             IslandShape(flare: flare, radius: radius)
                 .fill(Color.black)
@@ -557,8 +574,12 @@ struct IslandContentView: View {
             PermissionPage(kind: .camera)
         case .keychain:
             KeychainPage()
+        case .keychainHint:
+            KeychainHintPage()
         case .update:
             UpdatePage()
+        case let .updating(version):
+            UpdatingPage(version: version)
         case .ready:
             FaceIDGlyph(phase: .success, size: 58)
                 .padding(.top, 14)
