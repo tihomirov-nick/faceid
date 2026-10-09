@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated {
             AppModel.shared.start()
+            // The icon as chosen in the settings, before the updater may copy the bundle elsewhere.
+            AppIcon.restore()
             UpdateCenter.shared.start()
             statusItem = StatusItemController.shared
             let hotspot = NotchHotspot()

@@ -440,6 +440,10 @@ struct MorePage: View {
                     .help(L("Показывает значок лица над экраном блокировки, пока идет проверка, и зеленую галочку после разблокировки"))
                 Row(title: L("Звуковые эффекты")) { Switch(isOn: $settings.soundEffects) }
                     .help(L("FaceID подает короткий звук при разблокировке лицом и неудачной проверке, при записи и удалении лица и перед автоблокировкой. Громкость у него как у звуков предупреждений, а если в Системных настройках, в разделе «Звук», выключены звуковые эффекты интерфейса, звука нет"))
+                Row(title: L("Иконка")) {
+                    AppIconPicker(selection: Binding(get: { settings.appIcon }, set: { AppIcon.choose($0) }))
+                }
+                .help(L("Как FaceID выглядит в Finder, Launchpad и списках macOS"))
                 Row(title: L("Внешние камеры")) { Switch(isOn: $settings.allowExternalCamera) }
                 Row(title: L("Запускать при входе")) {
                     Switch(isOn: Binding(get: { model.launchAtLogin }, set: { model.setLaunchAtLogin($0) }))
@@ -451,6 +455,13 @@ struct MorePage: View {
                 Row(title: L("Версия %@", updater.currentVersion), last: true) { UpdateStatus(updater: updater) }
             }
             .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            if let message = model.message {
+                Text(message)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.orange)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
             HStack(spacing: 6) {
                 Button(L("Сменить пароль")) {
                     model.forgetPassword()
@@ -467,6 +478,7 @@ struct MorePage: View {
         .padding(.horizontal, 14)
         .padding(.top, 8)
         .foregroundStyle(.white)
+        .animation(.easeInOut(duration: 0.2), value: model.message)
     }
 
     private struct Row<Control: View>: View {
@@ -554,6 +566,50 @@ struct Segments<Value: Hashable>: View {
                             }
                         }
                         .contentShape(Capsule())
+                }
+                .buttonStyle(TilePressStyle())
+            }
+        }
+        .padding(2)
+        .background(Capsule().fill(Color.white.opacity(0.12)))
+        .animation(.spring(response: 0.32, dampingFraction: 0.75), value: selection)
+    }
+}
+
+/// The app icon's choice: both icons with their names, the chosen one on the white pill, as in `Segments`.
+struct AppIconPicker: View {
+    @Binding var selection: AppIcon.Style
+    @Namespace private var pill
+
+    var body: some View {
+        HStack(spacing: 1) {
+            ForEach(AppIcon.Style.allCases, id: \.self) { style in
+                Button {
+                    selection = style
+                    Haptics.tap()
+                } label: {
+                    HStack(spacing: 4) {
+                        if let image = AppIcon.previews[style] {
+                            Image(nsImage: image)
+                                .resizable()
+                                .interpolation(.high)
+                                .frame(width: 18, height: 18)
+                        }
+                        Text(style.title)
+                            .font(.system(size: 10.5, weight: selection == style ? .semibold : .regular))
+                            .foregroundStyle(selection == style ? Color.black : Color.white.opacity(0.8))
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
+                    .padding(.leading, 3)
+                    .padding(.trailing, 8)
+                    .frame(height: 22)
+                    .background {
+                        if selection == style {
+                            Capsule().fill(Color.white).matchedGeometryEffect(id: "pill", in: pill)
+                        }
+                    }
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(TilePressStyle())
             }

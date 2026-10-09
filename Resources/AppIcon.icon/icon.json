@@ -1,36 +1,24 @@
 {
   "fill" : {
-    "linear-gradient" : [
-      "extended-srgb:0.32157,0.85098,0.43922,1.00000",
-      "extended-srgb:0.10196,0.63922,0.32157,1.00000"
-    ],
-    "orientation" : {
-      "start" : { "x" : 0.5, "y" : 0.0 },
-      "stop" : { "x" : 0.5, "y" : 1.0 }
-    }
+    "solid" : "srgb:0.00000,0.00000,0.00000,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
-          "glass" : true,
-          "image-name" : "frame.svg",
-          "name" : "frame"
-        },
-        {
-          "glass" : true,
-          "image-name" : "face.svg",
-          "name" : "face",
-          "opacity" : 0.95
+          "glass" : false,
+          "image-name" : "mark.svg",
+          "name" : "mark"
         }
       ],
       "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.5
+        "kind" : "none",
+        "opacity" : 0
       },
+      "specular" : false,
       "translucency" : {
-        "enabled" : true,
-        "value" : 0.5
+        "enabled" : false,
+        "value" : 0
       }
     }
   ],

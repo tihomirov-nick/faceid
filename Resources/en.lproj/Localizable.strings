@@ -26,6 +26,9 @@
 "FaceID — лицо и пароль для разблокировки экрана" = "FaceID — face and password for unlocking the screen";
 "FaceID — данные лица" = "FaceID — face data";
 "FaceID — пароль для разблокировки экрана" = "FaceID — password for unlocking the screen";
+"Черно-белая" = "Black and White";
+"Зеленая" = "Green";
+"Не получилось сменить иконку, попробуйте еще раз" = "Couldn't change the icon, try again";
 "Не удалось сохранить лицо в Связке ключей" = "Couldn't save the face in the keychain";
 "изменить настройки FaceID" = "change FaceID settings";
 "Мягкая" = "Relaxed";
@@ -65,6 +68,8 @@
 "Показывает значок лица над экраном блокировки, пока идет проверка, и зеленую галочку после разблокировки" = "Shows the face icon above the lock screen while it checks your face, and the green checkmark after unlocking";
 "Звуковые эффекты" = "Sound Effects";
 "FaceID подает короткий звук при разблокировке лицом и неудачной проверке, при записи и удалении лица и перед автоблокировкой. Громкость у него как у звуков предупреждений, а если в Системных настройках, в разделе «Звук», выключены звуковые эффекты интерфейса, звука нет" = "FaceID plays a short sound when your face unlocks the Mac or isn't recognized, when a face is recorded or deleted, and before Auto-Lock. It plays at the alert volume and stays silent when interface sound effects are off in System Settings, Sound";
+"Иконка" = "Icon";
+"Как FaceID выглядит в Finder, Launchpad и списках macOS" = "How FaceID looks in Finder, Launchpad and the lists of macOS";
 "Внешние камеры" = "External Cameras";
 "Запускать при входе" = "Open at Login";
 "Проверять обновления" = "Check for Updates";

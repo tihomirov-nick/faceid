@@ -10,7 +10,7 @@ unset SDKROOT
 
 APP_NAME="FaceID"
 BUNDLE_ID="${BUNDLE_ID:-com.faceid.app}"
-VERSION="${VERSION:-1.1.1}"
+VERSION="${VERSION:-1.1.2}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
 APP="$ROOT/build/$APP_NAME.app"
 MODELS=(SFace)
@@ -57,9 +57,11 @@ for model in "${MODELS[@]}"; do
     [ -d "$APP/Contents/Resources/$model.mlmodelc" ] || { echo "$model: compilation failed"; exit 1; }
 done
 cp Resources/LICENSE-sface.txt "$APP/Contents/Resources/"
+# The classic green icon, which FaceID sets on its bundle when the user picks it in the settings (AppIcon.swift).
+cp Resources/AppIconGreen.png "$APP/Contents/Resources/"
 
-# Icon: Liquid Glass icon made in the Icon Composer format (Resources/AppIcon.icon). actool turns it into
-# Assets.car (layered glass icon for macOS 26+, flat images for older systems) and AppIcon.icns.
+# Icon: a flat icon in the Icon Composer format (Resources/AppIcon.icon, drawn by scripts/make_icon.swift). actool
+# turns it into Assets.car (the icon for macOS 26+, flat images for older systems) and AppIcon.icns.
 xcrun actool "$ROOT/Resources/AppIcon.icon" --compile "$APP/Contents/Resources" \
     --platform macosx --minimum-deployment-target 14.0 --app-icon AppIcon \
     --output-partial-info-plist "$ROOT/build/icon-partial.plist" --output-format human-readable-text >/dev/null

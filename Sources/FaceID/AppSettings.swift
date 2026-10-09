@@ -44,6 +44,7 @@ final class AppSettings: ObservableObject {
         static let externalCamera = "allowExternalCamera"
         static let badge = "lockScreenBadge"
         static let sounds = "soundEffects"
+        static let appIcon = "appIcon"
     }
 
     @Published var unlockEnabled: Bool { didSet { defaults.set(unlockEnabled, forKey: Key.unlock) } }
@@ -60,6 +61,9 @@ final class AppSettings: ObservableObject {
     @Published var lockScreenBadge: Bool { didSet { defaults.set(lockScreenBadge, forKey: Key.badge) } }
     /// Short system sounds for the moments that matter (`SoundEffects`).
     @Published var soundEffects: Bool { didSet { defaults.set(soundEffects, forKey: Key.sounds) } }
+    /// The app icon: the bundle's own black and white one, or the classic green set on the bundle (`AppIcon`). Changed
+    /// through `AppIcon.choose`, which puts the icon in place first.
+    @Published var appIcon: AppIcon.Style { didSet { defaults.set(appIcon.rawValue, forKey: Key.appIcon) } }
 
     private init() {
         defaults.register(defaults: [
@@ -75,6 +79,7 @@ final class AppSettings: ObservableObject {
         allowExternalCamera = defaults.bool(forKey: Key.externalCamera)
         lockScreenBadge = defaults.bool(forKey: Key.badge)
         soundEffects = defaults.bool(forKey: Key.sounds)
+        appIcon = AppIcon.Style(rawValue: defaults.string(forKey: Key.appIcon) ?? "") ?? .blackAndWhite
     }
 
     /// Recognition rules for unlocking.
