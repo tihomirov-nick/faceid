@@ -1,24 +1,25 @@
 import CoreGraphics
 
 /// FaceID's face, drawn by its own geometry: four corners, two eyes, a nose and a smile, built from lines and circular
-/// arcs. One drawing serves the whole app: the menu bar icon and its frames (`MenuBarIcon`), the island's glyph
-/// (`FaceMarkView`) and the mark of the app icon (`scripts/make_icon.swift` writes it into Resources/AppIcon.icon). It
-/// uses only CoreGraphics: the script compiles this file on its own.
+/// arcs. One drawing serves the whole app: the menu bar icon (`MenuBarIcon`), the island's glyph (`FaceMarkView`) and the
+/// mark of the app icon (`scripts/make_icon.swift` writes it into Resources/AppIcon.icon). It uses only CoreGraphics: the
+/// script compiles this file on its own.
 ///
-/// The geometry is laid out in points on a mark of `side` points, the menu bar's size, y down from its top left corner;
-/// the corners' outer edges lie on the sides of the square. Other sizes scale it as a whole. The numbers follow the large
-/// Face ID glyph the app icon was asked to look like: this very construction, fitted to a picture of it, matches it within
-/// a fraction of a pixel. Only the line widths differ with the size, see `Lines`.
+/// The geometry is laid out in units on a mark of `side` units (the menu bar's size in points before the family's icons
+/// grew), y down from its top left corner; the corners' outer edges lie on the sides of the square. Every size scales it
+/// as a whole, the lines with it. The numbers follow the large Face ID glyph the app icon was asked to look like: this
+/// very construction, fitted to a picture of it, matches it within a fraction of a pixel. Only the weight of the lines
+/// differs between the uses, see `Lines`.
 enum FaceMark {
     static let side: CGFloat = 14.34
 
-    /// Line widths on a mark of `side` points.
+    /// Line widths on a mark of `side` units.
     struct Lines {
         var corner: CGFloat
         var eye: CGFloat
         var face: CGFloat
         /// As the SF Symbol `faceid` at regular weight, which the menu bar used: the menu bar icon, where thinner lines
-        /// would fade.
+        /// would fade (1.32 pt corners on its 16 pt mark).
         static let regular = Lines(corner: 1.18, eye: 1.13, face: 0.95)
         /// As the symbol at light weight, which the island used.
         static let light = Lines(corner: 0.925, eye: 0.895, face: 0.77)
@@ -74,23 +75,14 @@ enum FaceMark {
         return parts
     }
 
-    /// The menu bar's mark, made once: the menu bar icon redraws it 30 times a second while it moves.
-    private static let menuBarCorners = corners(), menuBarFace = face()
-
-    /// Draws the menu bar's mark in black (as template images want it) with its top left corner at `origin`: the
-    /// corners, and the face moved sideways by `shake` at `faceOpacity`.
-    static func draw(in context: CGContext, at origin: CGPoint, faceOpacity: CGFloat = 1, shake: CGFloat = 0) {
+    /// Draws the menu bar's mark, `size` points wide, in black (as template images want it) with its top left corner at
+    /// `origin`.
+    static func draw(in context: CGContext, at origin: CGPoint, size: CGFloat) {
         context.saveGState()
         context.translateBy(x: origin.x, y: origin.y)
         context.setFillColor(CGColor(gray: 0, alpha: 1))
-        for part in menuBarCorners { context.addPath(part) }
+        for part in corners(size: size) + face(size: size) { context.addPath(part) }
         context.fillPath()
-        if faceOpacity > 0 {
-            context.translateBy(x: shake, y: 0)
-            context.setFillColor(CGColor(gray: 0, alpha: faceOpacity))
-            for part in menuBarFace { context.addPath(part) }
-            context.fillPath()
-        }
         context.restoreGState()
     }
 

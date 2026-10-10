@@ -76,7 +76,6 @@ final class TestModel: ObservableObject {
         scanning = true
         scanResult = nil
         count(true)
-        StatusItemController.shared.show(.scanning)
         Task {
             let outcome = await session.run { [feed] report, buffer in
                 feed.push(buffer)
@@ -86,7 +85,6 @@ final class TestModel: ObservableObject {
             }
             self.session = nil
             self.scanning = false
-            StatusItemController.shared.show(outcome == .cancelled ? .idle : (outcome.isRecognized ? .success : .failure))
             guard outcome != .cancelled else { return }
             self.scanResult = outcome
             if case .recognized = outcome {

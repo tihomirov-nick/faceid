@@ -111,6 +111,13 @@ final class UpdateCenter {
         }
     }
 
+    /// Whether a restart the user asks for in the settings (a new interface language) may happen now: it waits for the
+    /// same things as the restart of an update, except the island, which shows the settings it is asked from.
+    var mayRestartForSettings: Bool {
+        !LockScreen.isLocked && AppModel.shared.activeScans == 0 && !KeychainPrompt.shared.asking && !Island.shared.keepOpen
+            && !Island.lockScreen.isShowing && !AppModel.shared.presence.isWatching
+    }
+
     /// What holds back the restart of an update that installs itself: whatever breaks `isQuiet`, and the camera watching
     /// for the owner before the auto-lock (a restart there would leave the Mac unlocked for longer).
     private var isBusy: Bool {

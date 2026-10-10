@@ -100,7 +100,6 @@ final class UnlockService {
     /// desktop now.
     func playApproval(since approvedAt: Date) {
         SoundEffects.play(.success)
-        StatusItemController.shared.show(.success)
         if island.aboveLockScreen, case .scan(.success, _)? = island.content {
             island.hide(after: max(Self.approvalTime - Date().timeIntervalSince(approvedAt), 0.6))
             return
@@ -142,7 +141,6 @@ final class UnlockService {
         self.session = session
         model.scanStarted()
         showIsland(.scanning, model: model)
-        StatusItemController.shared.show(.scanning)
         Log.write("lock screen: scanning (attempt \(attempts))" + (island.aboveLockScreen ? " · island above the lock screen" : ""))
         Task {
             let outcome = await session.run()
@@ -150,8 +148,6 @@ final class UnlockService {
             guard self.session === session else { return }
             self.session = nil
             self.lastScanEnded = Date()
-            // The menu bar is hidden on the lock screen: its checkmark comes with the approval after unlocking.
-            StatusItemController.shared.show(outcome.isFailure ? .failure : .idle)
             switch outcome {
             case let .recognized(similarity, embedding):
                 Log.write(String(format: "lock screen: recognized (similarity %.2f)", similarity))

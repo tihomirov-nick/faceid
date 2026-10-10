@@ -149,7 +149,6 @@ final class EnrollModel: ObservableObject {
         }
         phase = .finished
         SoundEffects.play(.success)
-        StatusItemController.shared.show(.success)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             MainActor.assumeIsolated { self?.done() }
         }

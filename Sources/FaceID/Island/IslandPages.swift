@@ -118,10 +118,8 @@ struct HomePage: View {
                         .appButton(.primary)
                     Button(L("Лица")) { Island.shared.show(.faces) }
                         .appButton(.secondary)
-                    Button(L("Еще")) {
-                        Task { if await model.confirmOwner() { Island.shared.show(.more) } }
-                    }
-                    .appButton(.secondary)
+                    Button(L("Настройки")) { AppCommands.shared.showSettings() }
+                        .appButton(.secondary)
                 }
             }
             .padding(.horizontal, 12)
@@ -421,38 +419,38 @@ struct PageHeader: View {
 
 // MARK: - More
 
-/// The other settings, one short row each.
+/// The settings, one short row each, on three cards as in every app of the family: the general ones, the updates and
+/// FaceID's own.
 struct MorePage: View {
     @ObservedObject private var model = AppModel.shared
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var updater = UpdateCenter.shared.updater
     @ObservedObject private var loginItem: Updater.LoginItem
+    /// The interface language saved for FaceID, and whether the next launch speaks another one than this launch: read
+    /// again when the page opens and when FaceID becomes active, since System Settings may have changed it.
+    @State private var language: InterfaceLanguage
+    @State private var restartNeeded: Bool
+    private let languageStandIn: Bool
 
-    /// `loginItem`: a stand-in for the offscreen drawing (DebugHooks), so that nothing is registered for real.
-    @MainActor init(loginItem: Updater.LoginItem? = nil) {
+    /// `loginItem`, `language`: stand-ins for the offscreen drawing (DebugHooks), so that nothing is registered or read
+    /// for real.
+    @MainActor init(loginItem: Updater.LoginItem? = nil, language: (choice: InterfaceLanguage, restart: Bool)? = nil) {
         _loginItem = ObservedObject(wrappedValue: loginItem ?? .shared)
+        _language = State(initialValue: language?.choice ?? InterfaceLanguage.saved())
+        _restartNeeded = State(initialValue: language?.restart ?? InterfaceLanguage.needsRestart(running: Localization.current))
+        languageStandIn = language != nil
     }
 
     var body: some View {
         VStack(spacing: 8) {
             PageHeader(title: L("Настройки"))
-            VStack(spacing: 0) {
-                Row(title: L("Строгость")) {
-                    Segments(selection: $settings.strictness, options: Strictness.allCases.map { ($0, $0.title) })
+            card {
+                Row(title: L("Язык интерфейса"), last: restartNeeded) {
+                    Segments(selection: Binding(get: { language }, set: { choose($0) }),
+                             options: InterfaceLanguage.allCases.map { ($0, $0.title) })
                 }
-                Row(title: L("Автоблокировка")) {
-                    Segments(selection: $settings.autoLockDelay,
-                             options: [(15, L("15 с")), (30, L("30 с")), (60, L("1 мин")), (120, L("2 мин")), (300, L("5 мин"))])
-                }
-                Row(title: L("Анимация разблокировки")) { Switch(isOn: $settings.lockScreenBadge) }
-                    .help(L("Показывает значок лица над экраном блокировки, пока идет проверка, и зеленую галочку после разблокировки"))
-                Row(title: L("Звуковые эффекты")) { Switch(isOn: $settings.soundEffects) }
-                    .help(L("FaceID подает короткий звук при разблокировке лицом и неудачной проверке, при записи и удалении лица и перед автоблокировкой. Громкость у него как у звуков предупреждений, а если в Системных настройках, в разделе «Звук», выключены звуковые эффекты интерфейса, звука нет"))
-                Row(title: L("Иконка")) {
-                    AppIconPicker(selection: Binding(get: { settings.appIcon }, set: { AppIcon.choose($0) }))
-                }
-                .help(L("Как FaceID выглядит в Finder, Launchpad и списках macOS"))
-                Row(title: L("Внешние камеры")) { Switch(isOn: $settings.allowExternalCamera) }
+                .help(L("При варианте «Как в системе» FaceID берет первый подходящий язык из списка в Системных настройках, раздел «Язык и регион». Новый язык включится после перезапуска"))
+                if restartNeeded { restartRow }
                 Row(title: L("Запускать при входе")) {
                     if loginItem.needsApproval {
                         // Switched off in System Settings: only the user can switch it on there.
@@ -471,6 +469,10 @@ struct MorePage: View {
                 }
                 .help(loginItem.needsApproval ? L("Запуск при входе выключен в Системных настройках. Включите FaceID в разделе «Объекты входа»")
                                               : L("FaceID запускается, когда вы входите в систему, и сразу готов разблокировать Mac"))
+                Row(title: L("Звуковые эффекты"), last: true) { Switch(isOn: $settings.soundEffects) }
+                    .help(L("FaceID подает короткий звук при разблокировке лицом и неудачной проверке, при записи и удалении лица и перед автоблокировкой. Громкость у него как у звуков предупреждений, а если в Системных настройках, в разделе «Звук», выключены звуковые эффекты интерфейса, звука нет"))
+            }
+            card {
                 Row(title: L("Проверять обновления")) {
                     Switch(isOn: Binding(get: { updater.automaticChecks }, set: { updater.automaticChecks = $0 }))
                 }
@@ -483,7 +485,22 @@ struct MorePage: View {
                 .help(L("Новая версия ставится сама, когда FaceID свободен: экран разблокирован, лицо не проверяется и островок закрыт. Если выключить, FaceID будет предлагать обновиться"))
                 Row(title: L("Версия %@", updater.currentVersion), last: true) { UpdateStatus(updater: updater) }
             }
-            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            card {
+                Row(title: L("Строгость")) {
+                    Segments(selection: $settings.strictness, options: Strictness.allCases.map { ($0, $0.title) })
+                }
+                Row(title: L("Автоблокировка")) {
+                    Segments(selection: $settings.autoLockDelay,
+                             options: [(15, L("15 с")), (30, L("30 с")), (60, L("1 мин")), (120, L("2 мин")), (300, L("5 мин"))])
+                }
+                Row(title: L("Анимация разблокировки")) { Switch(isOn: $settings.lockScreenBadge) }
+                    .help(L("Показывает значок лица над экраном блокировки, пока идет проверка, и зеленую галочку после разблокировки"))
+                Row(title: L("Иконка")) {
+                    AppIconPicker(selection: Binding(get: { settings.appIcon }, set: { AppIcon.choose($0) }))
+                }
+                .help(L("Как FaceID выглядит в Finder, Launchpad и списках macOS"))
+                Row(title: L("Внешние камеры"), last: true) { Switch(isOn: $settings.allowExternalCamera) }
+            }
             if let message = model.message {
                 Text(message)
                     .font(.system(size: 10.5))
@@ -499,7 +516,7 @@ struct MorePage: View {
                 .appButton(.secondary)
                 Button(L("Журнал")) { NSWorkspace.shared.open(Log.fileURL) }
                     .appButton(.secondary)
-                Button(L("Выйти")) { NSApp.terminate(nil) }
+                Button(L("Завершить FaceID")) { NSApp.terminate(nil) }
                     .appButton(.secondary)
             }
             .controlSize(.small)
@@ -508,8 +525,54 @@ struct MorePage: View {
         .padding(.top, 8)
         .foregroundStyle(.white)
         .animation(.easeInOut(duration: 0.2), value: model.message)
-        // System Settings may have changed it since.
-        .onAppear { loginItem.refresh() }
+        .animation(.easeInOut(duration: 0.2), value: restartNeeded)
+        // System Settings may have changed them since.
+        .onAppear {
+            loginItem.refresh()
+            readLanguage()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in readLanguage() }
+    }
+
+    /// A group of rows on a card of its own.
+    private func card(@ViewBuilder _ rows: () -> some View) -> some View {
+        VStack(spacing: 0) { rows() }
+            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    /// Under the language while the next launch speaks another one: the new language comes with a restart, which waits
+    /// while FaceID is busy.
+    private var restartRow: some View {
+        HStack(spacing: 8) {
+            Text(L("Язык сменится после перезапуска"))
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.6))
+                .lineLimit(1)
+            Spacer(minLength: 6)
+            Button {
+                InterfaceLanguage.relaunch()
+            } label: {
+                Text(L("Перезапустить")).font(.system(size: 11, weight: .medium))
+            }
+            .appButton(.secondary)
+            .controlSize(.mini)
+            .fixedSize()
+            .disabled(!UpdateCenter.shared.mayRestartForSettings)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 30)
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1).padding(.leading, 12) }
+    }
+
+    private func choose(_ choice: InterfaceLanguage) {
+        InterfaceLanguage.save(choice)
+        readLanguage()
+    }
+
+    private func readLanguage() {
+        guard !languageStandIn else { return }
+        language = InterfaceLanguage.saved()
+        restartNeeded = InterfaceLanguage.needsRestart(running: Localization.current)
     }
 
     private struct Row<Control: View>: View {
@@ -531,6 +594,17 @@ struct MorePage: View {
             }
             // A tooltip shows wherever the pointer rests on the row.
             .contentShape(Rectangle())
+        }
+    }
+}
+
+extension InterfaceLanguage {
+    /// The choice's name in the settings; the languages go by their own names.
+    var title: String {
+        switch self {
+        case .system: L("Как в системе")
+        case .russian: "Русский"
+        case .english: "English"
         }
     }
 }
@@ -917,50 +991,31 @@ final class NotchHotspot {
     }
 }
 
-/// The Face ID glyph in the menu bar (`MenuBarIcon`): a click opens the controls in the island, a right click offers
-/// Quit. It moves when a face is checked. The item is as wide as the icon plus the menu bar's own margins
+/// FaceID's face in the menu bar (`MenuBarIcon`, it never moves): a click opens the controls in the island, a right click
+/// or a Control-click the menu (`AppCommands.statusMenu`). The item is as wide as the icon plus the menu bar's own margins
 /// (`variableLength`), like the other apps' icons: a square item would leave a wider gap around it.
 @MainActor
 final class StatusItemController: NSObject {
     static let shared = StatusItemController()
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let icon = MenuBarIcon()
 
     private override init() {
         super.init()
-        icon.onFrame = { [weak self] image in self?.item.button?.image = image }
-        item.button?.image = icon.still
+        item.button?.image = MenuBarIcon.image
         item.button?.setAccessibilityLabel("FaceID")
         item.button?.target = self
         item.button?.action = #selector(clicked)
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }
 
-    /// A moment of a face check: the scan line, the checkmark, the head shake.
-    func show(_ moment: MenuBarIcon.Moment) {
-        icon.play(moment)
-    }
-
     @objc private func clicked() {
-        if NSApp.currentEvent?.type == .rightMouseUp {
-            let menu = NSMenu()
-            menu.addItem(withTitle: L("Заблокировать экран"), action: #selector(lockScreen), keyEquivalent: "").target = self
-            menu.addItem(withTitle: L("Проверить обновления…"), action: #selector(checkForUpdates), keyEquivalent: "").target = self
-            menu.addItem(.separator())
-            menu.addItem(withTitle: L("Выйти из FaceID"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-            item.menu = menu
+        let event = NSApp.currentEvent
+        if event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true {
+            item.menu = AppCommands.shared.statusMenu()
             item.button?.performClick(nil)
             item.menu = nil
         } else {
             Island.shared.toggleHome()
         }
-    }
-
-    @objc private func lockScreen() {
-        LockScreen.lock()
-    }
-
-    @objc private func checkForUpdates() {
-        UpdateCenter.shared.checkFromMenu()
     }
 }

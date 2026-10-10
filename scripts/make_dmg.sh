@@ -9,7 +9,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-VERSION="${VERSION:-1.1.3}"
+VERSION="${VERSION:-1.1.4}"
 export VERSION
 if [ -z "${SIGN_IDENTITY:-}" ]; then
     # Without -v: a self-signed certificate counts as "not trusted", and -v would leave it out.

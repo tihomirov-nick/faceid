@@ -16,8 +16,9 @@ enum MakeIcon {
     /// The bodies: black, and for the classic icon Apple's systemGreen (#34C759), as the Face ID icon on iPhone.
     static let black = (red: 0, green: 0, blue: 0)
     static let green = (red: 52, green: 199, blue: 89)
-    /// The mark's side as a share of the tile, as in the large Face ID glyph the mark follows.
-    static let share: CGFloat = 0.7
+    /// The mark's side as a share of the tile: as large as the family's icons are, 80 %, with the corners' bends well
+    /// inside the tile's rounded corners.
+    static let share: CGFloat = 0.8
     /// The line widths: as in that glyph, thinner than the menu bar's.
     static let lines = FaceMark.Lines.icon
 

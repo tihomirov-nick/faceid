@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated {
+            // Nobody sees it, but the password field takes ⌘V, ⌘A and ⌘Z from its Edit menu.
+            MainMenu.install()
             AppModel.shared.start()
             // The icon as chosen in the settings, before the updater may copy the bundle elsewhere.
             AppIcon.restore()

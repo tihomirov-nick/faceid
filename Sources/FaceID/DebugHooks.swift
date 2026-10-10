@@ -135,10 +135,10 @@ enum DebugHooks {
     /// (start, a pass in progress, the first pass done, the end), the Mac password, the permissions, setup done, the lock
     /// screen (scan, success, failure), the auto-lock countdown, the controls, the faces, the face check, the settings,
     /// the settings with opening at login switched off in System Settings (more-approval) and with the automatic checks
-    /// off (more-manual), an update on offer, the restart
-    /// of an update that installed itself (updating), the keychain's confirmation, the hint while FaceID asks the keychain
-    /// by itself after an update (keychain-hint), and the menu bar icon's frames (white, menubar-*.png). A set-up FaceID is
-    /// made up in memory: two faces of random numbers, the password and the permissions counted as given, a login item
+    /// off (more-manual) and with another interface language picked than this launch speaks (more-restart), an update
+    /// on offer, the restart of an update that installed itself (updating), the keychain's confirmation, the hint while
+    /// FaceID asks the keychain by itself after an update (keychain-hint), the menu bar icon (white, menubar.png) and its
+    /// menu (menu.png). A set-up FaceID is made up in memory: two faces of random numbers, the password and the permissions counted as given, a login item
     /// that only says its status; nothing is saved or registered. The island is as tall as its content, as in the app.
     static func renderStates(to folder: String) {
         let geometry = IslandGeometry(screen: NSScreen.main)
@@ -206,12 +206,16 @@ enum DebugHooks {
         let test = TestModel()
         test.scanResult = .recognized(similarity: 0.8, embedding: [])
         write("test", .test(test), TestView(test: test))
-        write("more", .more, MorePage(loginItem: Updater.LoginItem(service: LoginStandIn(.enabled))))
-        write("more-approval", .more, MorePage(loginItem: Updater.LoginItem(service: LoginStandIn(.requiresApproval))))
+        write("more", .more, MorePage(loginItem: Updater.LoginItem(service: LoginStandIn(.enabled)), language: (.system, false)))
+        // Another language picked than this launch speaks: the restart under the language.
+        let other: InterfaceLanguage = Localization.current == "ru" ? .english : .russian
+        write("more-restart", .more, MorePage(loginItem: Updater.LoginItem(service: LoginStandIn(.enabled)), language: (other, true)))
+        write("more-approval", .more, MorePage(loginItem: Updater.LoginItem(service: LoginStandIn(.requiresApproval)),
+                                              language: (.system, false)))
         // The automatic checks switched off, in memory only (the registration domain is never saved): "Update
         // Automatically" is dimmed.
         UserDefaults.standard.register(defaults: ["checkForUpdates": false])
-        write("more-manual", .more, MorePage(loginItem: Updater.LoginItem(service: LoginStandIn(.enabled))))
+        write("more-manual", .more, MorePage(loginItem: Updater.LoginItem(service: LoginStandIn(.enabled)), language: (.system, false)))
         UserDefaults.standard.register(defaults: ["checkForUpdates": true])
         UpdateCenter.preview = .available(Updater.Release(
             version: "1.1.0", title: "FaceID 1.1.0",
@@ -226,24 +230,47 @@ enum DebugHooks {
         write("keychain", .keychain, KeychainPage())
         write("keychain-hint", .keychainHint, content(.keychainHint))
 
-        // The menu bar icon at rest, scanning, with the checkmark and shaking "no": white at 8x.
-        let frames: [(String, MenuBarIcon.Frame)] = [("rest", .init()), ("scan", .init(face: 0.45, scan: 0.35)),
-                                                     ("check", .init(face: 0, check: 1)), ("shake", .init(shake: -1.5))]
-        for (name, frame) in frames {
-            let size = MenuBarIcon.size
-            let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 8), pixelsHigh: Int(size.height * 8),
-                                       bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                       colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
-            rep.size = size
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-            let bounds = NSRect(origin: .zero, size: size)
-            MenuBarIcon.image(frame).draw(in: bounds)
-            NSColor.white.set()
-            bounds.fill(using: .sourceAtop)
-            NSGraphicsContext.restoreGraphicsState()
-            try? rep.representation(using: .png, properties: [:])?
-                .write(to: URL(fileURLWithPath: folder).appendingPathComponent("menubar-\(name).png"))
+        // The menu bar icon, white at 8x, and its menu.
+        try? MenuBarIcon.tinted(.white, scale: 8).tiffRepresentation.flatMap(NSBitmapImageRep.init(data:))?
+            .representation(using: .png, properties: [:])?
+            .write(to: URL(fileURLWithPath: folder).appendingPathComponent("menubar.png"))
+        let menu = ImageRenderer(content: MenuStandIn(menu: AppCommands.shared.statusMenu()).environment(\.colorScheme, .dark))
+        menu.scale = 4
+        if let image = menu.cgImage {
+            try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
+                .write(to: URL(fileURLWithPath: folder).appendingPathComponent("menu.png"))
+        }
+    }
+
+    /// The menu bar icon's menu drawn from its items, as a dark menu looks (AppKit draws a real menu only on screen).
+    private struct MenuStandIn: View {
+        let menu: NSMenu
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(menu.items.enumerated()), id: \.offset) { _, item in
+                    if item.isSeparatorItem {
+                        Rectangle().fill(Color.white.opacity(0.14)).frame(height: 1).padding(.horizontal, 12).padding(.vertical, 5)
+                    } else {
+                        HStack(spacing: 24) {
+                            Text(item.title)
+                            Spacer(minLength: 0)
+                            if !item.keyEquivalent.isEmpty {
+                                Text("⌘" + item.keyEquivalent.uppercased()).foregroundStyle(.white.opacity(0.5))
+                            }
+                        }
+                        .font(.system(size: 13))
+                        .padding(.horizontal, 14)
+                        .frame(height: 24)
+                    }
+                }
+            }
+            .padding(.vertical, 6)
+            .fixedSize()
+            .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Color(white: 0.17)))
+            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Color.white.opacity(0.15)))
+            .foregroundStyle(.white)
+            .padding(8)
         }
     }
 
@@ -335,12 +362,8 @@ enum DebugHooks {
             UpdateCenter.preview = Self.updateState(value)
             UpdateCenter.shared.updater.objectWillChange.send()
         case "menubar-sheet":
-            // menubar-sheet=<png>: the menu bar icon's frames enlarged and at their real size
+            // menubar-sheet=<png>: the menu bar icon enlarged and at its real size
             MenuBarIcon.debugSheet(to: value)
-        case "menubar":
-            // menubar=scanning|success|failure|idle: the menu bar icon's moment
-            let moment: MenuBarIcon.Moment = value == "scanning" ? .scanning : value == "success" ? .success : value == "failure" ? .failure : .idle
-            StatusItemController.shared.show(moment)
         case "sound":
             // sound=success|failure|start|tick|delete
             if let event = SoundEffects.Event.allCases.first(where: { "\($0)" == value }) { SoundEffects.play(event) }

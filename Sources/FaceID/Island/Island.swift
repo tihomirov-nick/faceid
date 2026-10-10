@@ -421,7 +421,7 @@ struct IslandGeometry: Equatable {
         case .test: return CGSize(width: 360, height: top + 258)
         case .countdown: return CGSize(width: max(notchWidth + 60, 240), height: top + 50)
         case .home: return home
-        case .more: return CGSize(width: 390, height: top + 449)
+        case .more: return CGSize(width: 420, height: top + 501)
         case .faces:
             let count = AppModel.shared.enrollment?.faces.count ?? 1
             return CGSize(width: 360, height: top + 88 + CGFloat(count) * 41)
